@@ -49,7 +49,16 @@ def Convert2Tushare(df):
 def QA_fetch_stock_info2(code):
     return QA.QA_fetch_stock_info(code).ipo_date
 
+
 class Stock_Base():
+    def __init__(self):
+        self._stock_list = QA.QA_fetch_stock_list()
+
+    def stock_name(self,stoke_code):
+        '''通过股票代码导出公司名称'''
+        company_name = list(self._stock_list.loc[self._stock_list['code'] == stoke_code].name)[0]
+        return company_name
+
     #          code  decimal_point   name   ...         sec sse volunit
     # code                                   ...
     # 000001  000001              2   平安银行   ...    stock_cn  sz     100
@@ -57,11 +66,11 @@ class Stock_Base():
         #df = pd.DataFrame([['000001', "平安银行"]], columns=['code', 'name'])
         # df.set_index(["code"], inplace=True)
 
-        df = QA.QA_fetch_stock_list()
         # print(df)
         # df = df.drop([0, 1],axis=0)
         # df = df.drop([3, len(df)],axis=0)
         # print(df)
+        df = self._stock_list
 
         if beforeDate:
             pd_info= pd.DataFrame([item for item in QA.DATABASE.stock_info.find()]).drop('_id', axis=1, inplace=False).set_index(
@@ -73,7 +82,7 @@ class Stock_Base():
             df["ipo_date"] = df['code'].map(s).fillna(df['ipo_date']).astype(str)
             # 过滤
             df = df.loc[lambda x: (x['ipo_date']>"0")&(x['ipo_date']<beforeDate)] #df[lambda x: x['ipo_date']!=None and x['ipo_date']!='0']
-            print(df)
+            #print(df)
 
             # pd2 = pd.DataFrame()
             # for index, row in df.iterrows():

@@ -78,13 +78,15 @@ class qa_over_week_line():
 
         # 如何保存k线数据进行快速计算？
         # df = ts.get_k_data(stockID, start=start_day, end=end_day, ktype='W')
-        df = QA_quotation(stockID, start_day, end_day, frequence=FREQUENCE.DAY,
-                                   market=MARKET_TYPE.STOCK_CN, source=DATASOURCE.MONGO, output=OUTPUT_FORMAT.DATAFRAME)
-        # df = df.to_qfq()
-
-        period_high = df['close'].max()
+        df = QA.QA_fetch_stock_day_adv(stockID, start_day, end_day).to_qfq()
+        # df = QA_quotation(stockID, start_day, end_day, frequence=FREQUENCE.DAY,
+        #                            market=MARKET_TYPE.STOCK_CN, source=DATASOURCE.MONGO, output=OUTPUT_FORMAT.DATAFRAME)
+        # todo: 复权
+        #df = df.to_qfq()
+        cc = df['close']
+        period_high = cc.max()
         # print period_high
-        today_high = df.iloc[-1]['close']
+        today_high = cc.iloc[-1]
         # 这里不能直接用 .values
         # 如果用的df【：1】 就需要用.values
         # print today_high

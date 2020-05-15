@@ -21,7 +21,8 @@ class strategy(QAStrategyStockBase):
 
 if __name__ == '__main__':
     s = strategy(code=['000001', '000002'], frequence='day', start='2019-01-01', end='2019-02-01', strategy_id='x')
-    s.debug()
+    #s.debug()
+    s.debug_t0()
     """
     
     portfolio with user_cookie  USER_QoZ8TDrF  already exist!!
