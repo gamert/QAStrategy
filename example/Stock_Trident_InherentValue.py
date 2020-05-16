@@ -1,36 +1,37 @@
-﻿﻿# coding: utf-8
+﻿# coding: utf-8
 # @author: lin
 # @date: 2018/11/20
-#[QUANTAXIS量化分析]三因素模型
-# https://blog.csdn.net/weixin_39220714/article/details/87826136
+
+# https://blog.csdn.net/weixin_39220714/article/details/88104187
+# [QUANTAXIS量化分析]成长股内在价值投资策略
 
 import QUANTAXIS as QA
-import datetime
 import pandas as pd
 import time
-import math
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn import linear_model
+
 
 pd.set_option('max_colwidth', 5000)
 pd.set_option('display.max_columns', 5000)
 pd.set_option('display.max_rows', 5000)
 
 
-class ThreePara:
-    def __init__(self, start_time, stop_time, n_stock=10, stock_init_cash=1000000, n_days_before=1):
-        self.Account = QA.QA_Account()  # 初始化账户
+class InherentValue:
+    def __init__(self, start_time, stop_time, n_stock=10, stock_init_cash=1000000, n_EPS_before=5):
+        self.Account = QA.QA_Account(user_cookie='Trident_lin', portfolio_cookie='InherentValue')  # 初始化账户
         self.Account.reset_assets(stock_init_cash)  # 初始化账户
-        self.Account.account_cookie = 'three_para'
+        self.Account.account_cookie = 'inherent_value'
         self.Broker = QA.QA_BacktestBroker()
         self.time_quantum_list = ['-12-31', '-09-30', '-06-30', '-03-31']
         self.start_time = start_time
         self.stop_time = stop_time
-        self.n_days_before = n_days_before
+        self.n_EPS_before = n_EPS_before
+        self.n_stock = n_stock
         self.stock_pool = []
         self.data = None
         self.ind = None
-        self.n_stock = n_stock
         self.get_stock_pool()
 
     def get_financial_time(self):
@@ -76,32 +77,20 @@ class ThreePara:
                     # print(price / EPS)
                     self.stock_pool.append(stock_code)
 
-    def cjlyz(self, data, n=20):
-        # log(30日日均交易量/昨日交易量)
-        data['cjlyz'] = 0
-        data['n_days_vol_ave'] = QA.MA(data['volume'], n)
-        data = data.fillna(0)
-        last_index = 0
-        for index, row in data.iterrows():
-            if last_index != 0:
-                data.loc[index, 'cjlyz'] = row['n_days_vol_ave'] / data.loc[last_index, 'volume']
-            last_index = index
-        for index, row in data.iterrows():
-            if row['cjlyz'] != 0:
-                data.loc[index, 'cjlyz'] = math.log10(row['cjlyz'])
-        return data
+    def linear_model_main(self, x_parameters, y_parameters, predict_value):
+        # Create linear regression object
+        regr = linear_model.LinearRegression()
+        regr.fit(x_parameters, y_parameters)
+        predict_outcome = regr.predict(predict_value)
+        prediction = {}
+        prediction['intercept'] = regr.intercept_
+        prediction['coefficient'] = regr.coef_
+        prediction['predicted_value'] = predict_outcome
+        return prediction
 
-    # 反转因子
-    def fzyz(self, data, n=10, m=5):
-        # (ma10-ma5)/ma5
-        data['ma_10'] = QA.MA(data['close'], n)
-        data['ma_5'] = QA.MA(data['close'], m)
-        data['fzyz'] = (data['ma_10'] - data['ma_5']) / data['ma_5']
-        data = data.fillna(0)
-        return data
-
-    def get_EPS(self, stock_code, the_time):
+    def get_value(self, stock_code, the_time):
         # 由财政数据中得到EPS，是上个季度的
+        # 对纯净EPS做线性回归，不用ln的原因是有负值时会出错
         year = the_time[0:4]
         if_break = False
         n_EPS_list = []
@@ -111,19 +100,30 @@ class ThreePara:
                 if date < the_time:
                     financial_report = QA.QA_fetch_financial_report(stock_code, date)
                     if financial_report is not None:
-                        return financial_report.iloc[0]['EPS']
+                        n_EPS_list.append(financial_report.iloc[0]['EPS'])
+                        # n_EPS_list[date] = financial_report.iloc[0]['EPS']
+                        if len(n_EPS_list) >= self.n_EPS_before:  # 求几何平均值时需要一共n+1个数据
+                            if_break = True
+                            break
             if if_break:  # 触发，则跳出循环
                 break
-            year = str(int(year) - 1)
+            year = str(int(year) - 1)  # 今年没有财政数据则换成前一年
+        time_list = [[self.n_EPS_before - i] for i in range(self.n_EPS_before)]
+        # 一个做变量x，一个做变量y
+        prediction = self.linear_model_main(time_list, n_EPS_list, self.n_EPS_before + 1)
+        coefficient = prediction['coefficient']
+        increase_ratio = coefficient / np.mean(n_EPS_list)
+        value = n_EPS_list[0] * (9 + 2 * increase_ratio)         # 8.5可能过小，可以适当提高，试试效果如何
+        return value
 
-    def three_para(self, data):
-        # 整合三个因子
-        data = self.cjlyz(data)
-        data = self.fzyz(data)
-        data['EPS'] = 0
+    def get_decided_para(self, data):
+        # 将决定性因子作为决策点，可以购入则置为1
+        data['decided_para'] = 0
+        data['value_price'] = 0
+        # data.drop(['open', 'high', 'low', 'volume', 'amount'], axis=1, inplace=True)
         if_first = True
         last_index = None
-        for index, row in data.iterrows():
+        for index, row in data.iterrows():       # 事实证明可行，datastruct的add一个函数是对每一支单独计算的
             if_value_equal = True  # 值是否跟上次值相同
             the_time = str(index[0])[:10]
             if not if_first:
@@ -134,30 +134,32 @@ class ThreePara:
                         if_value_equal = False
                         break
                 if if_value_equal:
-                    data.loc[index, 'EPS'] = data.loc[last_index, 'EPS']
+                    data.loc[index, 'value_price'] = data.loc[last_index, 'value_price']
+                    data.loc[index, 'decided_para'] = data.loc[last_index, 'decided_para']
             if if_first or not if_value_equal:
                 stock_code = str(index[1])
                 # print(stock_code)
-                value = self.get_EPS(stock_code, the_time)
-                data.loc[index, 'EPS'] = value
-            if_first = False
-            last_index = index  # 把当次索引加入，下次调用则为上次索引
-        data['decided_para'] = 0.3 * data['EPS'] + 0.4 * data['cjlyz'] + 0.3 * data['fzyz']
+                value = self.get_value(stock_code, the_time)
+                price = row['close']  # 价格用当天收盘价来表示
+                data.loc[index, 'value_price'] = value / price
+                if 1 < (value / price) < 1.2:
+                    data.loc[index, 'decided_para'] = 1
+                if_first = False
+            last_index = index  # 把当次时间加入，下次调用则为上次时间
         return data
 
     def solve_data(self):
         self.data = QA.QA_fetch_stock_day_adv(self.stock_pool, self.start_time, self.stop_time)
-        self.ind = self.data.add_func(self.three_para)
+        self.ind = self.data.add_func(self.get_decided_para)
 
     def run(self):
         self.solve_data()
-        print(self.ind)
         for items in self.data.panel_gen:
             today_time = items.index[0][0]
-            one_day_data = self.ind.loc[today_time]      # 得到有包含因子的DataFrame
+            one_day_data = self.ind.loc[today_time]  # 得到有包含因子的DataFrame
             one_day_data['date'] = items.index[0][0]
             one_day_data.reset_index(inplace=True)
-            one_day_data.sort_values(by='decided_para', axis=0, ascending=False, inplace=True)
+            one_day_data.sort_values(by=['decided_para', 'value_price'], axis=0, ascending=False, inplace=True)
             today_stock = list(one_day_data.iloc[0:self.n_stock]['code'])
             one_day_data.set_index(['date', 'code'], inplace=True)
             one_day_data = QA.QA_DataStruct_Stock_day(one_day_data)  # 转换格式，便于计算
@@ -187,19 +189,20 @@ class ThreePara:
             for stock_code in today_stock:
                 try:
                     item = one_day_data.select_day(str(today_time)).select_code(stock_code)
-                    order = self.Account.send_order(
-                        code=stock_code,
-                        time=today_time,
-                        amount=1000,
-                        towards=QA.ORDER_DIRECTION.BUY,
-                        price=0,
-                        order_model=QA.ORDER_MODEL.CLOSE,
-                        amount_model=QA.AMOUNT_MODEL.BY_AMOUNT
-                    )
-                    self.Broker.receive_order(QA.QA_Event(order=order, market_data=item))
-                    trade_mes = self.Broker.query_orders(self.Account.account_cookie, 'filled')
-                    res = trade_mes.loc[order.account_cookie, order.realorder_id]
-                    order.trade(res.trade_id, res.trade_price, res.trade_amount, res.trade_time)
+                    if item.to_json()[0]['decided_para'] == 1:        # 可购买
+                        order = self.Account.send_order(
+                            code=stock_code,
+                            time=today_time,
+                            amount=1000,
+                            towards=QA.ORDER_DIRECTION.BUY,
+                            price=0,
+                            order_model=QA.ORDER_MODEL.CLOSE,
+                            amount_model=QA.AMOUNT_MODEL.BY_AMOUNT
+                        )
+                        self.Broker.receive_order(QA.QA_Event(order=order, market_data=item))
+                        trade_mes = self.Broker.query_orders(self.Account.account_cookie, 'filled')
+                        res = trade_mes.loc[order.account_cookie, order.realorder_id]
+                        order.trade(res.trade_id, res.trade_price, res.trade_amount, res.trade_time)
                 except Exception as e:
                     print(e)
             self.Account.settle()
@@ -217,11 +220,12 @@ class ThreePara:
 
 
 start = time.time()
-sss = ThreePara('2017-01-01', '2018-01-01', 10)
+sss = InherentValue('2017-01-01', '2018-01-01')
 stop = time.time()
 print(stop - start)
 print(len(sss.stock_pool))
 sss.run()
 stop2 = time.time()
 print(stop2 - stop)
+
 

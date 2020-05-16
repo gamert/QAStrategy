@@ -49,7 +49,8 @@ def Convert2Tushare(df):
 def QA_fetch_stock_info2(code):
     return QA.QA_fetch_stock_info(code).ipo_date
 
-
+# 基类:
+# 初始化股票列表（指定日期前，排除新股）
 class Stock_Base():
     def __init__(self):
         self._stock_list = QA.QA_fetch_stock_list()

@@ -18,7 +18,7 @@ pd.set_option('display.max_rows', 5000)
 
 class RollingProfitStrategy:
     def __init__(self, start_time, stop_time, n=20, ascending=False, stock_init_cash=1000000):
-        self.Account = QA.QA_Account()  # 初始化账户
+        self.Account = QA.QA_Account(user_cookie='Trident_lin', portfolio_cookie='RollingProfitStrategy')  # 初始化账户
         self.Account.reset_assets(stock_init_cash)  # 初始化账户
         self.Broker = QA.QA_BacktestBroker()
         self.time_quantum_list = ['-12-31', '-09-30', '-06-30', '-03-31']
