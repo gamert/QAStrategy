@@ -4,22 +4,30 @@ from QAStrategy.qastockbase import QAStrategyStockBase
 
 class MStockStrategy(QAStrategyStockBase):
     #
-
     # 如果使用简单的基于macd的金叉死叉买入
     # debug是截断到100的数据
-    #
-    def handle_bar_macd(self,data):
+    # 对于实盘来说 4h*60min = 240min / 5min = 48个;即使全部计算，开销也应该可控
+    def handle_bar_macd(self,bar):
+        code = bar.name[1]
         # 全部重算? 还是累积计算?
         #print(self.get_positions('000002'))
         res = QA.QA_indicator_MACD(self.market_data)
+        # 计算MA双均线
+        # res = QA.QA_indicator_MA(self.market_data, 2, 5)
         print(res.iloc[-1])
         #
         if res.DIF[-1] > res.DEA[-1]:
             print('LONG')
-
+            if self.positions.volume_long == 0:
+                self.send_order('BUY', 'OPEN', code=code, price=bar['close'], volume=1)
+            if self.positions.volume_short > 0:
+                self.send_order('BUY', 'CLOSE', code=code, price=bar['close'], volume=1)
         else:
             print('SHORT')
-
+            if self.positions.volume_short == 0:
+                self.send_order('SELL', 'OPEN', code=code, price=bar['close'], volume=1)
+            if self.positions.volume_long > 0:
+                self.send_order('SELL', 'CLOSE', code=code, price=bar['close'], volume=1)
     def risk_check(self):
         pass
 

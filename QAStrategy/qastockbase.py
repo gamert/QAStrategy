@@ -167,7 +167,7 @@ class QAStrategyStockBase(QAStrategyCTABase):
         port = user.new_portfolio(self.portfolio)
         self.acc = port.new_accountpro(
             account_cookie=self.strategy_id, init_cash=self.init_cash, market_type=self.market_type)
-        #self.positions = self.acc.get_position(self.code)
+        self.positions = self.acc.get_position(self.code)
 
         print(self.acc)
 
