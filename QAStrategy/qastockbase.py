@@ -112,24 +112,38 @@ class QAStrategyStockBase(QAStrategyCTABase):
     def _debug_sim(self):
         self.running_mode = 'sim'
 
-        self._old_data = QA.QA_fetch_stock_min(self.code, QA.QA_util_get_last_day(
-            QA.QA_util_get_real_date(str(datetime.date.today()))), str(datetime.datetime.now()), format='pd', frequence=self.frequence).set_index(['datetime', 'code'])
+        last_day = QA.QA_util_get_last_day(QA.QA_util_get_real_date(str(datetime.date.today())))
+        # self._old_data = QA.QA_fetch_stock_min(self.code, last_day , str(datetime.datetime.now()), format='pd', frequence=self.frequence).set_index(['datetime', 'code'])
 
+        # 模拟盘就是分钟？
+        if self.frequence.endswith('min'):
+            if isinstance(self.code, str):
+                self._old_data = QA.QA_fetch_get_stock_min('tdx', self.code.upper(), last_day, str(datetime.datetime.now()), self.frequence)[:-1].set_index(['datetime', 'code'])
+                # self._old_data = self._old_data.assign(volume=self._old_data.trade).loc[:, [
+                #     'open', 'high', 'low', 'close', 'volume']]
+            else:
+                self._old_data = pd.concat([QA.QA_fetch_get_stock_min('tdx', item.upper(), last_day, str(datetime.datetime.now()), self.frequence)[:-1].set_index(['datetime', 'code']) for item in self.code], sort=False)
+            # self._old_data = self._old_data.assign(volume=self._old_data.trade).loc[:, [
+            #     'open', 'high', 'low', 'close', 'volume']]
+        else:
+            self._old_data = pd.DataFrame()
+        print("self._old_data: len = ", len(self._old_data))
+        # 重排？
         self._old_data = self._old_data.loc[:, [
             'open', 'high', 'low', 'close', 'volume']]
-
+        # 指定实时数据库..
         self.database = pymongo.MongoClient(mongo_ip).QAREALTIME
-
+        # 账户Collection
         self.client = self.database.account
         self.subscriber_client = self.database.subscribe
-
+        # 创建策略账户(一个基于快期DIFF协议的QA实时账户协议)...
         self.acc = QIFI_Account(
             username=self.strategy_id, password=self.strategy_id, trade_host=mongo_ip)
         self.acc.initial()
-
+        # 分发？
         self.pub = publisher_routing(exchange='QAORDER_ROUTER', host=self.trade_host,
                                      port=self.trade_port, user=self.trade_user, password=self.trade_password)
-
+        # 注册一个MQ
         self.subscribe_data(self.code, self.frequence, self.data_host,
                             self.data_port, self.data_user, self.data_password)
 
