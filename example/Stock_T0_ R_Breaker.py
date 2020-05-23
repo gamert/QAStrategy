@@ -46,7 +46,7 @@ class RBreakerStrategy(QAStrategyStockBase):
         # 高开要保护？ 前15分钟高开回落?
         # 突破: 如果今天没有买入？
         unit = 500
-        print(bar.close,bBreak,sBreak)
+        print(self.running_time, bar.close,self.day_low,self.day_high,bBreak,sBreak)
         if bar.close > bBreak:
             # 在空仓的情况下，如果盘中价格超过突破买入价，
             # 则采取趋势策略，即在该点位开仓做多
@@ -100,10 +100,10 @@ class RBreakerStrategy(QAStrategyStockBase):
         #     print('close all')
         #     order_close_all()
     def do_sell(self,code,price):
-        self.send_order('SELL', 'CLOSE', code=code, price=price, volume=1)
+        self.send_order('SELL', 'CLOSE', code=code, price=price, volume=1000)
 
     def do_buy(self,code,price):
-        self.send_order('BUY', 'OPEN', code=code, price=price, volume=1)
+        self.send_order('BUY', 'OPEN', code=code, price=price, volume=1000)
 
     def risk_check(self):
         pass
@@ -136,12 +136,13 @@ class RBreakerStrategy(QAStrategyStockBase):
         low = data.low.iloc[0]  # 前一日的最低价
         close = data.close.iloc[0]  # 前一日的收盘价
         pivot = (high + low + close) / 3  # 枢轴点
-        self.bBreak = high + 2 * (pivot - low)  # 突破买入价
+        ss = 1.2
+        self.bBreak = high + ss * (pivot - low)  # 突破买入价
         self.sSetup = pivot + (high - low)  # 观察卖出价
-        self.sEnter = 2 * pivot - low  # 反转卖出价
-        self.bEnter = 2 * pivot - high  # 反转买入价
+        self.sEnter = pivot + pivot - low  # 反转卖出价
+        self.bEnter = pivot + pivot - high  # 反转买入价
         self.bSetup = pivot - (high - low)  # 观察买入价
-        self.sBreak = low - 2 * (high - pivot)  # 突破卖出价
+        self.sBreak = low - ss * (high - pivot)  # 突破卖出价
 
         self.position_buy = 0;
         self.position_sell = 0;
@@ -176,7 +177,7 @@ class RBreakerStrategy(QAStrategyStockBase):
 if __name__ == '__main__':
 
     start_min = '2020-05-11'
-    end_min = '2020-05-21'
+    end_min = '2020-05-22'
     s = RBreakerStrategy(code='300142', frequence='5min', start=start_min, end=end_min, strategy_id='x')
     # 回测(不存储账户数据的模式)
     s.debug()
