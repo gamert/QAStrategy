@@ -1,3 +1,4 @@
+import pandas as pd
 import QUANTAXIS as QA
 from QAStrategy.qastockbase import QAStrategyStockBase
 
@@ -14,20 +15,22 @@ class MStockStrategy(QAStrategyStockBase):
         res = QA.QA_indicator_MACD(self.market_data)
         # 计算MA双均线
         # res = QA.QA_indicator_MA(self.market_data, 2, 5)
-        print(res.iloc[-1])
+        # if res.MA2[-1] > res.MA5[-1]:
+        #print(res.iloc[-1])
         #
-        if res.DIF[-1] > res.DEA[-1]:
-            print('LONG')
-            if self.positions.volume_long == 0:
-                self.send_order('BUY', 'OPEN', code=code, price=bar['close'], volume=1)
-            if self.positions.volume_short > 0:
-                self.send_order('BUY', 'CLOSE', code=code, price=bar['close'], volume=1)
-        else:
-            print('SHORT')
-            if self.positions.volume_short == 0:
-                self.send_order('SELL', 'OPEN', code=code, price=bar['close'], volume=1)
-            if self.positions.volume_long > 0:
-                self.send_order('SELL', 'CLOSE', code=code, price=bar['close'], volume=1)
+        if (not pd.np.isnan(res.DIF[-1])) and (not pd.np.isnan(res.DEA[-1])):
+            if (not pd.np.isnan(res.DIF[-2])) and (not pd.np.isnan(res.DEA[-2])):
+                 if res.DIF[-1] > res.DEA[-1]:
+                    # 1. 仓位管理？买入多少？
+                    if res.DIF[-2] < res.DEA[-2]:
+                        print(bar.name,"金叉:")
+                        self.send_order('BUY', 'OPEN', code=code, price=bar['close'], volume=1)
+                 else:
+                    # 1. 是否有可卖的单？ 2. 卖多少？
+                    if res.DIF[-2] > res.DEA[-2]:
+                        print(bar.name, "死叉:")
+                        self.send_order('SELL', 'CLOSE', code=code, price=bar['close'], volume=1)
+
     def risk_check(self):
         pass
 
@@ -72,13 +75,13 @@ class MStockStrategy(QAStrategyStockBase):
 
 if __name__ == '__main__':
 
-    start_min = '2019-07-05'
-    end_min = '2019-07-10'
+    start_min = '2020-05-18'
+    end_min = '2020-05-21'
     # 使用t0模式进行回测,使用strategy_id='x_t0'
     # s = MStockStrategy(code='000002', frequence='5min', start=start_min, end=end_min, strategy_id='x_t0')
     # s.debug_t0()
 
-    s = MStockStrategy(code='000002', frequence='5min', start=start_min, end=end_min, strategy_id='x')
+    s = MStockStrategy(code='300142', frequence='5min', start=start_min, end=end_min, strategy_id='x')
     # 回测(不存储账户数据的模式)
     s.debug()
 
@@ -91,8 +94,8 @@ if __name__ == '__main__':
     # 1. 首先从库中取得起始min到最近的min1数据
     # 2. 订阅数据更新
     # 实时模拟(阻塞形式不能同时多开很多个)
-    s = MStockStrategy(code='000002', frequence='5min', start=start_min, end=end_min, strategy_id='x_sim')
-    s.run_sim()
+    # s = MStockStrategy(code='000002', frequence='5min', start=start_min, end=end_min, strategy_id='x_sim')
+    # s.run_sim()
 
     # 实时模拟(非阻塞模式可以同时开很多个)
-    s.debug_sim()
+    # s.debug_sim()
