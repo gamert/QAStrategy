@@ -4,7 +4,7 @@ from QAStrategy.qastockbase import QAStrategyStockBase
 
 
 """
-Turtle是一种短线日内交易策略
+Bollinger是一种短线日内交易策略
 
 """
 class BollingerStrategy(QAStrategyStockBase):
@@ -83,11 +83,12 @@ class BollingerStrategy(QAStrategyStockBase):
         pass
 
     def on_dailyopen(self):
+
         #根据前一日的价格计算...
         today = QA.QA_util_get_next_day(str(self.running_time)[0:10]) if self.running_time !="" else self.start
         last_day = QA.QA_util_get_last_day(today)
 
-        N = 20
+        N = self.period
         last_day20 = QA.QA_util_get_last_day(today, n=N+1)
 
         # 取得过去20日
@@ -107,6 +108,7 @@ class BollingerStrategy(QAStrategyStockBase):
         self.day_high = 0
         self.day_low = 99999999
 
+
         pass
 
     def on_dailyclose(self):
@@ -117,6 +119,12 @@ class BollingerStrategy(QAStrategyStockBase):
         """
         # 设置止损点数
         self.stopLossPrice = 50
+        # 设置布林线的三个参数
+        self.maPeriod = 26  # 计算BOLL布林线中轨的参数
+        self.stdPeriod = 26  # 计算BOLL 标准差的参数
+        self.stdRange = 1  # 计算BOLL 上下轨和中轨距离的参数
+
+        self.period = max(self.maPeriod, self.stdPeriod, self.stdRange) + 1  # 订阅数据滑窗长度
         pass
 
 
