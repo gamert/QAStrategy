@@ -159,6 +159,8 @@ class QAStrategyStockBase(QAStrategyCTABase):
         while True:
             pass
 
+    def init_strategy(self):
+        pass
 
     def debug(self):
         self.running_mode = 'backtest'
@@ -169,6 +171,7 @@ class QAStrategyStockBase(QAStrategyCTABase):
             account_cookie=self.strategy_id, init_cash=self.init_cash, market_type=self.market_type)
         self.positions = self.acc.get_position(self.code)
 
+        self.init_strategy()
         print(self.acc)
 
         print(self.acc.market_type)

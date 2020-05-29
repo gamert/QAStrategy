@@ -29,6 +29,24 @@ INIT_CLOSE_PRICE = 0
 
 class ATRStrategy(QAStrategyStockBase):
 
+    cls_config = None
+    cls_user_name = None
+    cls_password = None
+    cls_mode = None
+    cls_td_addr = None
+    cls_strategy_id = None
+    cls_subscribe_symbols = None
+    cls_stock_pool = []
+
+    cls_backtest_start = None
+    cls_backtest_end = None
+    cls_initial_cash = 1000000
+    cls_transaction_ratio = 1
+    cls_commission_ratio = 0.0
+    cls_slippage_ratio = 0.0
+    cls_price_type = 1
+    cls_bench_symbol = None
+
     @classmethod
     def read_ini(cls, ini_name):
         """
@@ -36,6 +54,49 @@ class ATRStrategy(QAStrategyStockBase):
         """
         cls.cls_config = configparser.ConfigParser()
         cls.cls_config.read(ini_name)
+
+    @classmethod
+    def get_strategy_conf(cls):
+        """
+        功能：读取策略配置文件strategy段落的值
+        """
+        if cls.cls_config is None:
+            return
+
+        cls.cls_user_name = cls.cls_config.get('strategy', 'username')
+        cls.cls_password = cls.cls_config.get('strategy', 'password')
+        cls.cls_strategy_id = cls.cls_config.get('strategy', 'strategy_id')
+        cls.cls_subscribe_symbols = cls.cls_config.get('strategy', 'subscribe_symbols')
+        cls.cls_mode = cls.cls_config.getint('strategy', 'mode')
+        cls.cls_td_addr = cls.cls_config.get('strategy', 'td_addr')
+        if len(cls.cls_subscribe_symbols) <= 0:
+            cls.get_subscribe_stock()
+        else:
+            subscribe_ls = cls.cls_subscribe_symbols.split(',')
+            for data in subscribe_ls:
+                index1 = data.find('.')
+                index2 = data.find('.', index1 + 1, -1)
+                cls.cls_stock_pool.append(data[:index2])
+
+        return
+    @classmethod
+    def get_backtest_conf(cls):
+        """
+        功能：读取策略配置文件backtest段落的值
+        """
+        if cls.cls_config is None:
+            return
+
+        cls.cls_backtest_start = cls.cls_config.get('backtest', 'start_time')
+        cls.cls_backtest_end = cls.cls_config.get('backtest', 'end_time')
+        cls.cls_initial_cash = cls.cls_config.getfloat('backtest', 'initial_cash')
+        cls.cls_transaction_ratio = cls.cls_config.getfloat('backtest', 'transaction_ratio')
+        cls.cls_commission_ratio = cls.cls_config.getfloat('backtest', 'commission_ratio')
+        cls.cls_slippage_ratio = cls.cls_config.getfloat('backtest', 'slippage_ratio')
+        cls.cls_price_type = cls.cls_config.getint('backtest', 'price_type')
+        cls.cls_bench_symbol = cls.cls_config.get('backtest', 'bench_symbol')
+
+        return
 
     @classmethod
     def get_stock_pool(cls, csv_file):
@@ -47,6 +108,21 @@ class ATRStrategy(QAStrategyStockBase):
         for line in reader:
             cls.cls_stock_pool.append(line[0])
 
+        return
+
+    @classmethod
+    def get_subscribe_stock(cls):
+        """
+        功能：获取订阅代码
+        """
+        cls.get_stock_pool('stock_pool.csv')
+        bar_type = cls.cls_config.getint('para', 'bar_type')
+        if 86400 == bar_type:
+            bar_type_str = '.bar.' + 'daily'
+        else:
+            bar_type_str = '.bar.' + '%d' % cls.cls_config.getint('para', 'bar_type')
+
+        cls.cls_subscribe_symbols = ','.join(data + bar_type_str for data in cls.cls_stock_pool)
         return
 
     def utc_strtime(self, utc_time):
@@ -119,15 +195,12 @@ class ATRStrategy(QAStrategyStockBase):
             if len(end_daily_bars) <= 0:
                 continue
 
-            if ticker not in self.dict_last_factor:
-                continue
-
-            end_adj_factor = self.dict_last_factor[ticker]
-            high_ls = [data.high * data.adj_factor / end_adj_factor for data in daily_bars]
+            # end_adj_factor = self.dict_last_factor[ticker]
+            high_ls = [data.high for data in daily_bars]
             high_ls.reverse()
-            low_ls = [data.low * data.adj_factor / end_adj_factor for data in daily_bars]
+            low_ls = [data.low for data in daily_bars]
             low_ls.reverse()
-            cp_ls = [data.close * data.adj_factor / end_adj_factor for data in daily_bars]
+            cp_ls = [data.close for data in daily_bars]
             cp_ls.reverse()
 
             # 留出一个空位存储当天的一笔数据
@@ -181,6 +254,15 @@ class ATRStrategy(QAStrategyStockBase):
                 del self.dict_open_cum_days[key]
             else:
                 self.dict_open_cum_days[key] += 1
+    def get_last_factor(self):
+        """
+        功能：获取指定日期最新的复权因子
+        """
+        # for ticker in self.cls_stock_pool:
+        #     daily_bars = self.get_last_n_dailybars(ticker, 1, self.end_date)
+        #     if daily_bars is not None and len(daily_bars) > 0:
+        #         self.dict_last_factor.setdefault(ticker, daily_bars[0].adj_factor)
+        pass
 
     def init_entry_high_low(self):
         """
@@ -245,7 +327,7 @@ class ATRStrategy(QAStrategyStockBase):
         self.movement_stop_profit_loss(bar)
         self.fixation_stop_profit_loss(bar)
 
-        pos = self.get_position(bar.exchange, bar.sec_id, OrderSide_Bid)
+        pos = self.get_positions(symbol)
 
         # 补充当天价格
         if symbol in self.dict_price:
@@ -282,14 +364,14 @@ class ATRStrategy(QAStrategyStockBase):
                     if cur_open_vol == 0:
                         print('no available cash to buy, available cash: %.2f' % cash.available)
                     else:
-                        self.open_long(bar.exchange, bar.sec_id, bar.close, cur_open_vol)
+                        self.open_long(symbol, bar.close, cur_open_vol)
                         self.dict_open_close_signal[symbol] = True
                         logging.info('open long, symbol:%s, time:%s, price:%.2f' % (symbol, bar.strtime, bar.close))
                 elif pos is not None and (
                     bar.close < self.dict_prev_close[symbol] - atr_index[-1] * self.buy_multi_atr):
                     vol = pos.volume - pos.volume_today
                     if vol > 0:
-                        self.close_long(bar.exchange, bar.sec_id, bar.close, vol)
+                        self.close_long(symbol, bar.close, vol)
                         self.dict_open_close_signal[symbol] = True
                         logging.info('close long, symbol:%s, time:%s, price:%.2f' % (symbol, bar.strtime, bar.close))
 
@@ -305,7 +387,7 @@ class ATRStrategy(QAStrategyStockBase):
     #
     def on_order_filled(self, order):
         symbol = order.name
-        pos = self.get_position(symbol, order.side)
+        pos = self.get_positions(symbol)
         if pos is None and self.is_movement_stop == 1:
             self.dict_entry_high_low.pop(symbol)
 
@@ -317,10 +399,10 @@ class ATRStrategy(QAStrategyStockBase):
             return
 
         symbol = bar.name[1]
-        pos = self.get_position(bar.exchange, bar.sec_id, OrderSide_Bid)
+        pos = self.get_positions(symbol)
         if pos is not None:
             if pos.fpnl > 0 and pos.fpnl / pos.cost >= self.stop_fixation_profit:
-                self.close_long(bar.exchange, bar.sec_id, 0, pos.volume - pos.volume_today)
+                self.close_long(symbol, 0, pos.volume - pos.volume_today)
 
                 self.dict_open_close_signal[symbol] = True
                 print(
@@ -328,10 +410,12 @@ class ATRStrategy(QAStrategyStockBase):
                                                                                                                 pos.vwap,
                                                                                                                 pos.volume))
             elif pos.fpnl < 0 and pos.fpnl / pos.cost <= -1 * self.stop_fixation_loss:
-                self.close_long(bar.exchange, bar.sec_id, 0, pos.volume - pos.volume_today)
+                self.close_long(symbol, 0, pos.volume - pos.volume_today)
                 self.dict_open_close_signal[symbol] = True
                 print(
                     'fixnation stop loss: close long, symbol:%s, time:%s, price:%.2f, vwap:%s, volume:%s' % (symbol,
+                                                                                                             pos.vwap,
+                                                                                                             pos.volume))
 
 
     def movement_stop_profit_loss(self, bar):
@@ -344,8 +428,9 @@ class ATRStrategy(QAStrategyStockBase):
 
         entry_high = None
         entry_low = None
-        pos = self.get_position(bar.exchange, bar.sec_id, OrderSide_Bid)
+
         symbol = bar.name[1]
+        pos = self.get_positions(symbol)
 
         is_stop_profit = True
 
@@ -368,7 +453,7 @@ class ATRStrategy(QAStrategyStockBase):
                 if bar.close <= (
                         1 - self.stop_movement_profit) * entry_high and pos.fpnl / pos.cost >= self.stop_fixation_profit:
                     if pos.volume - pos.volume_today > 0:
-                        self.close_long(bar.exchange, bar.sec_id, 0, pos.volume - pos.volume_today)
+                        self.close_long(symbol, 0, pos.volume - pos.volume_today)
                         self.dict_open_close_signal[symbol] = True
                         print(
                             'movement stop profit: close long, symbol:%s, time:%s, price:%.2f, vwap:%.2f, volume:%s' % (
@@ -377,17 +462,19 @@ class ATRStrategy(QAStrategyStockBase):
 
             # 止损
             if pos.fpnl < 0 and pos.fpnl / pos.cost <= -1 * self.stop_fixation_loss:
-                self.close_long(bar.exchange, bar.sec_id, 0, pos.volume - pos.volume_today)
+                self.close_long(symbol, 0, pos.volume - pos.volume_today)
                 self.dict_open_close_signal[symbol] = True
                 print(
                     'movement stop loss: close long, symbol:%s, time:%s, price:%.2f, vwap:%.2f, volume:%s' % (symbol,
+                                                                                                              pos.vwap,
+                                                                                                              pos.volume))
                 # 取得n日
     # 买开
-    def open_long(self, exchange, sec_id, price, volume):
+    def open_long(self, symbol, price, volume):
         pass
 
     # 平开
-    def close_long(self, exchange, sec_id, price, volume):
+    def close_long(self, symbol, price, volume):
         pass
     #
     def get_last_n_dailybars(self, ticker, hist_size, cur_date):
@@ -469,6 +556,18 @@ class ATRStrategy(QAStrategyStockBase):
         """
         # 设置止损点数
         self.stopLossPrice = 50
+
+        self.cur_date = None
+        self.dict_price = {}
+        self.dict_open_close_signal = {}
+        self.dict_entry_high_low = {}
+        #self.dict_last_factor = {}     #直接复权...
+        self.dict_prev_close = {}
+        self.dict_open_cum_days = {}
+        self.read_ini('atr_stock.ini')
+        self.get_strategy_conf()
+        self.get_para_conf()
+        self.get_backtest_conf()
         pass
 
 
