@@ -88,7 +88,7 @@ class ATRStrategy(QAStrategyStockBase):
         """
         功能：策略启动初始化操作
         """
-        if self.cls_mode == gm.MD_MODE_PLAYBACK:
+        if self.running_mode == 'backtest':
             self.cur_date = self.cls_backtest_start
             self.end_date = self.cls_backtest_end
         else:
@@ -147,6 +147,7 @@ class ATRStrategy(QAStrategyStockBase):
         """
         # 新的一天，去掉第一笔数据,并留出一个空位存储当天的一笔数据
         for key in self.dict_price:
+            var = self.dict_price[key]
             if len(self.dict_price[key][0]) >= self.hist_size and self.dict_price[key][0][-1] > INIT_HIGH_PRICE:
                 self.dict_price[key][0] = np.append(self.dict_price[key][0][1:], INIT_HIGH_PRICE)
             elif len(self.dict_price[key][0]) < self.hist_size and self.dict_price[key][0][-1] > INIT_HIGH_PRICE:
@@ -248,6 +249,7 @@ class ATRStrategy(QAStrategyStockBase):
 
         # 补充当天价格
         if symbol in self.dict_price:
+            var = self.dict_price[symbol]
             if self.dict_price[symbol][0][-1] < bar.high:
                 self.dict_price[symbol][0][-1] = bar.high
 
@@ -260,7 +262,7 @@ class ATRStrategy(QAStrategyStockBase):
             # 当天未有对该代码开、平仓
             if symbol in self.dict_price:
 
-                atr_index = talib.ATR(high=self.dict_price[symbol][0],
+                atr_index = QA.talib.ATR(high=self.dict_price[symbol][0],
                                       low=self.dict_price[symbol][1],
                                       close=self.dict_price[symbol][2],
                                       timeperiod=self.atr_period)
@@ -379,6 +381,20 @@ class ATRStrategy(QAStrategyStockBase):
                 self.dict_open_close_signal[symbol] = True
                 print(
                     'movement stop loss: close long, symbol:%s, time:%s, price:%.2f, vwap:%.2f, volume:%s' % (symbol,
+                # 取得n日
+    # 买开
+    def open_long(self, exchange, sec_id, price, volume):
+        pass
+
+    # 平开
+    def close_long(self, exchange, sec_id, price, volume):
+        pass
+    #
+    def get_last_n_dailybars(self, ticker, hist_size, cur_date):
+        last_day20 = QA.QA_util_get_last_day(cur_date, hist_size)
+        # 取得过去20日
+        dataN = QA.QA_fetch_stock_day_adv(ticker, last_day20, cur_date).to_qfq()
+        return dataN
 
     def risk_check(self):
         pass
@@ -465,6 +481,8 @@ class ATRStrategy(QAStrategyStockBase):
         risk.save()
         risk.plot_assets_curve()
         print(risk.profit_construct)
+
+
 
 
 if __name__ == '__main__':
