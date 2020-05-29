@@ -33,52 +33,51 @@ class TurtleStrategy(QAStrategyStockBase):
         if ( pd.np.isnan(atr)):
             return
         #
-        value = self.init_cash
-        Unit = (value * 0.01) / atr
         #其中value * 1 % 即为总资产的1 %，考虑到国内最小变化量是0.01元，1手是100股，所以1ATR即为持1股股票的资产最大变动，那么买入
         # 1Unit单位的股票，使得总资产当天震幅不超过1 %
+
+        price = bar['close']
+        # 取整到100股
+        value = self.init_cash
+        Unit = (value * 0.01) / atr
+        volume = int(Unit / price / 100 + 0.5) * 100;
+        order_last = self.get_last_order()
 
         # 系统一：
         # I 、若当前价格高于过去20日的最高价，则买入一个Unit
         # II 、加仓：若股价在上一次买入的基础上上涨了0.5ATR，则加仓一个 Unit 。
-
-        # 取得上一次买入orders?
-        price = bar['close']
-        orders = self.acc.get_orders()
-
         if(price > self.hhv20[-1]):
-            # 取整到100股
-            volume = int(Unit/price/100+0.5)*100;
-            self.do_buy(code, price=price, volume=volume)
+            if(order_last == None or (order_last.price + 0.5*atr) < price):
+                print(self.running_time, bar.close, self.day_low)
+                self.do_buy(code, price=price, volume=volume)
             pass
 
         # 系统二：
         # I 、若当前价格高于过去 55 日的最高价，则买入一个Unit
         # II 、加仓：若股价在上一次买入的基础上上涨了0.5N ，则加仓一个 Unit 。
+        if(price > self.hhv55[-1]):
+            if(order_last == None or (order_last.price + 0.5*atr) < price):
+                print(self.running_time, bar.close, self.day_low)
+                self.do_buy(code, price=price, volume=volume)
+            pass
+
+        # 卖出...
 
         # 若某只股票 A 的ATR 为 1，20  日最高价为40 。
         # 则当股价突破40 时买入一个Unit ，当股价突破40+0.5×1=40.5 时加仓一个 Unit 。
         # 当股价突破40.5+0.5×1=41 时加仓一个 Unit 。
-
-
-        unit = 500
-        print(self.running_time, bar.close,self.day_low)
-
-        # if bar.close > bBreak:
-        #     pass
-        # elif bar.close < sBreak:
-        #     pass
-        # 15点收盘全部平仓。
-        # if context.now.hour == 15:
-        #     print(context.now)
-        #     print('close all')
-        #     order_close_all()
         self.P = bar['close']
+
     def do_sell(self,code,price,volume=1000):
         self.send_order('SELL', 'CLOSE', code=code, price=price, volume=volume)
 
     def do_buy(self,code,price,volume=1000):
         self.send_order('BUY', 'OPEN', code=code, price=price, volume=volume)
+
+    def get_last_order(self):
+        orders = self.acc.get_orders()
+        order_last = orders[-1] if len(orders) > 0 else None
+        return order_last
 
     def risk_check(self):
         pass
@@ -107,13 +106,19 @@ class TurtleStrategy(QAStrategyStockBase):
 
         # 取得过去20日
         dataN = QA.QA_fetch_stock_day_adv(self.code, last_day20, last_day).to_qfq()
-        high = dataN.high.iloc[-1]  # 前一日的最高价
-        low = dataN.low.iloc[-1]  # 前一日的最低价
+        # high = dataN.high.iloc[-1]  # 前一日的最高价
+        # low = dataN.low.iloc[-1]  # 前一日的最低价
         close = dataN.close.iloc[-1]  # 前一日的收盘价
 
         # 计算过去20天的最高值...
         self.hhv20 = QA.HHV(dataN['high'], N)
         self.ATR = QA.QA_indicator_ATR(dataN, N)
+
+        N = 55
+        last_day55 = QA.QA_util_get_last_day(today, n=N+1)
+        data55 = QA.QA_fetch_stock_day_adv(self.code, last_day55, last_day).to_qfq()
+        self.hhv55 = QA.HHV(data55['high'], N)
+
 
         self.P = close  #
         self.position_buy = 0;
