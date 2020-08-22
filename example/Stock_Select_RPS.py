@@ -7,12 +7,6 @@
 # RPS的值介于0-100之间，在过去的一年中，所有股票的涨幅排行中，前1%的股票的RPS值为99至100，前2%的股票的RPS值为98至99，
 # 以此类推。RPS时间周期可以自己根据需要进行调整，常用的有60日（3个月）、120日（半年）和250日（一年）等。
 
-# 先引入后面可能用到的library
-import time
-
-import pandas as pd
-import tushare as ts
-import matplotlib.pyplot as plt
 # %matplotlib inline
 
 # 正常显示画图时出现的中文和负号

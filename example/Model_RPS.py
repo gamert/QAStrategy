@@ -2,6 +2,9 @@ import time
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
+# RPS 计算模型:
+
 # 计算收益率
 def cal_ret(df, w=5):
     '''w:周5;月20;半年：120; 一年250

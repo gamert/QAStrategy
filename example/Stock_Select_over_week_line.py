@@ -78,7 +78,10 @@ class qa_over_week_line():
 
         # 如何保存k线数据进行快速计算？
         # df = ts.get_k_data(stockID, start=start_day, end=end_day, ktype='W')
-        df = QA.QA_fetch_stock_day_adv(stockID, start_day, end_day).to_qfq()
+        res = QA.QA_fetch_stock_day_adv(stockID, start_day, end_day)
+        if res == None:
+            return False
+        df = res.to_qfq()
         # df = QA_quotation(stockID, start_day, end_day, frequence=FREQUENCE.DAY,
         #                            market=MARKET_TYPE.STOCK_CN, source=DATASOURCE.MONGO, output=OUTPUT_FORMAT.DATAFRAME)
         # todo: 复权

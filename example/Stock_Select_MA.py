@@ -166,6 +166,6 @@ def ma_backtest(start, end, code_list=market_list, long=89, short=8, n=0.01, cas
 
 
 start = time.time()
-ma_backtest('2017-01-01', '2018-01-01')
+ma_backtest('2020-01-01', '2020-08-22')
 stop = time.time()
 print(stop - start)
