@@ -4,16 +4,13 @@ from QAStrategy.qastockbase import QAStrategyStockBase
 
 
 """
-Turtle是一种短线日内交易策略
+VCP是一种长期跟踪并在某日放量突破时的进场模式:
 类型：日内趋势追踪+反转策略
 周期：20天
 交易规则：
-根据配置文件csv中所列交易代码列表，先获取前一个周期的日线数据，获得该只股票代码的最高价和最低价
-初始化时，同时订阅csv文件中所有代码的tick行情，当有数据来时，检查当前价格是否突破最高价或最低价。
-如果向上突破这只代码过去20天的最高价，则按csv配置文件中的金额买入。
-如果向下突破这只代码过去20天的最低价，并且有可卖仓位，则全部卖出。
+
 """
-class TurtleStrategy(QAStrategyStockBase):
+class VCPStrategy(QAStrategyStockBase):
     #
 
     def handle_bar_(self, bar):
@@ -137,6 +134,8 @@ class TurtleStrategy(QAStrategyStockBase):
         """
         # 设置止损点数
         self.stopLossPrice = 50
+        #  从start开始
+
         pass
 
 
@@ -153,9 +152,9 @@ class TurtleStrategy(QAStrategyStockBase):
 
 if __name__ == '__main__':
 
-    start_min = '2020-05-11'
+    start_min = '2020-02-11'
     end_min = '2020-05-22'
-    s = TurtleStrategy(code='300142', frequence='5min', start=start_min, end=end_min, strategy_id='x')
+    s = VCPStrategy(code='300142', frequence='1min', start=start_min, end=end_min, strategy_id='x')
     # 回测(不存储账户数据的模式)
     s.debug()
     s.perf()
