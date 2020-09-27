@@ -32,6 +32,7 @@ class Future_IC2009(QAStrategyCTABase):
         # pprint.pprint(self.qifiacc.message)
 
 # ICL8 = IC主力 IC2009 ; ICL9 = IC指数
+# 获取中证指数和期指的贴水
 if __name__ == '__main__':
 
     # tes = QA.QA_fetch_get_future_list('pytdx')
@@ -41,12 +42,24 @@ if __name__ == '__main__':
 
     #res = QA.QA_get_future_day('pytdx', 'ICL8', start='2020-08-01', end='2020-08-30', frequence='day')
     #print(res)
-    data = QA.QA_quotation('ICL8', start='2020-08-01', end='2020-08-30', source=QA.DATASOURCE.MONGO,
+    _start = '2019-08-01'
+    _end = '2020-09-30'
+    code = '000905'
+    # 1. 获取'000905'的指数日线
+    # res = QA.QA_fetch_index_day_adv(code, start=_start, end=_end)
+    # res.data.to_excel(code+".xlsx")
+    # print(res.data)
+    # 2. 获取IC主力的日线
+    data = QA.QA_quotation('ICL8', start=_start, end=_end, source=QA.DATASOURCE.MONGO,
                             frequence='day', market=QA.MARKET_TYPE.FUTURE_CN, output=QA.OUTPUT_FORMAT.DATASTRUCT)
     print(data.data)
-
-    res = QA.QA_fetch_future_day_adv('ICL9', start='2020-08-01', end='2020-08-30')
+    # 3. 获取ICL9的日线
+    res = QA.QA_fetch_future_day_adv('ICL9', start='2020-08-01', end=_end)
     print(res.data)
+
+    # 4. 在xls中合并3项
+
+
     # res = QAQueryAdv.QA_fetch_future_day_adv(code, start, end)
     # res = QATdx.QA_fetch_get_future_day(code, start, end)
     # res = QA_DataStruct_Future_day(res.set_index(['date', 'code']))
