@@ -32,6 +32,7 @@ def now_time():
            ' 17:00:00' if datetime.datetime.now().hour < 15 else str(QA_util_get_real_date(
         str(datetime.date.today()), trade_date_sse, -1)) + ' 15:00:00'
 
+# 使用枚举返回?
 def date_range(start_date,end_date):
     for n in range(int((end_date-start_date).days)+1):
         yield start_date+datetime.timedelta(n)
@@ -40,6 +41,7 @@ def date_range(start_date,end_date):
 def get_cffex_url(month, day, year='2018'):
     return 'http://www.cffex.com.cn/sj/hqsj/rtj/' + year + month + '/' + day + '/' + year + month + day + '_1.csv'
 
+# 爬取中金所csv格式数据
 def get_cffex_csv(coll_cffex_day, month, day, year='2020'):
     """构造URL下载日统计数据文件"""
     try:
@@ -120,6 +122,26 @@ def QA_SU_save_cffex_day(client=DATABASE, ui_log=None, ui_progress=None):
         QA_util_log_info('ERROR CODE \n ', ui_log)
         QA_util_log_info(err, ui_log)
 
+# Dump 数据
+def QA_dump_cffex(client=DATABASE, code = "IC2012"):
+    coll_cffex_day = client.cffex_day
+    coll_cffex_day.create_index(
+        [
+         ("code",
+          pymongo.ASCENDING),
+         ("date_stamp",
+          pymongo.ASCENDING)
+        ]
+    )
+    #
+    ref = coll_cffex_day.find({'code': str(code)})
+    if ref.count() > 0:
+        df = pd.DataFrame([item for item in ref])
+        df.fillna('', inplace=True)
+        print(df)
+        with pd.ExcelWriter(code+'.xlsx') as writer:
+            df.to_excel(writer, index=None)
+        pass
 
 if __name__ == '__main__':
     # last = QA.QA_util_get_last_day(
@@ -135,5 +157,5 @@ if __name__ == '__main__':
     # http://www.cffex.com.cn/sj/hqsj/rtj/202009/25/20200925_1.csv
     # http://www.cffex.com.cn/sj/hqsj/rtj/201211/19/20121119_1.csv
     #get_cffex_csv("", "09", "25", '2020')
-
-    QA_SU_save_cffex_day()
+    QA_dump_cffex(code = "IC2103")
+    #QA_SU_save_cffex_day()
