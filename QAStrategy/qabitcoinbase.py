@@ -27,7 +27,7 @@ from QIFIAccount import QIFI_Account
 class QAStrategyBitcoinBase(QAStrategyCTABase):
 
     def __init__(self, code=['OKB-USDT'], frequence='1min', strategy_id='QA_STRATEGY', risk_check_gap=1, portfolio='default',
-                 start='2019-01-01', end='2019-10-21', send_wx=False, market_type='bitcoin_okex',
+                 start='2021-02-01', end='2021-02-23', send_wx=False, market_type='bitcoin_okex',
                  data_host=eventmq_ip, data_port=eventmq_port, data_user=eventmq_username, data_password=eventmq_password,
                  trade_host=eventmq_ip, trade_port=eventmq_port, trade_user=eventmq_username, trade_password=eventmq_password,
                  taskid=None, mongo_ip=mongo_ip):
@@ -111,15 +111,14 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
                                                       ).loc[:, ['open', 'high', 'low', 'close', 'volume']]
         self.upcoming_data(bar)
 
+    # 启动模拟盘...
     def _debug_sim(self):
         self.running_mode = 'sim'
 
         last_day = QA.QA_util_get_last_day(QA.QA_util_get_real_date(str(datetime.date.today())))
-        # self._old_data = QA.QA_fetch_stock_min(self.code, last_day , str(datetime.datetime.now()), format='pd', frequence=self.frequence).set_index(['datetime', 'code'])
 
-        # 模拟盘就是分钟？
         if self.frequence.endswith('min'):
-            self._old_data = QA.QA_fetch_get_stock_min('tdx', self.code.upper(), last_day, str(datetime.datetime.now()), self.frequence)[:-1].set_index(['datetime', 'code'])
+            self._old_data = self._fetch_get_btc_min(self.code.upper(), last_day, str(datetime.datetime.now()), self.frequence)[:-1].set_index(['datetime', 'code'])
             # self._old_data = self._old_data.assign(volume=self._old_data.trade).loc[:, [
             #     'open', 'high', 'low', 'close', 'volume']]
         else:
@@ -159,7 +158,13 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
     def init_strategy(self):
         pass
 
-    def _fetch_btc_data(code, start, end, frequence, market, source, output=OUTPUT_FORMAT.DATAFRAME):
+    def on_1min_bar(self):
+        pass
+
+    def _fetch_get_btc_min(self, codes, start, end, level='1min'):
+        return QA.QA_fetch_cryptocurrency_min_adv(codes, start, end, level)
+
+    def _fetch_btc_data(self, code, start, end, frequence, output=OUTPUT_FORMAT.DATAFRAME):
         """一个统一的获取k线的方法
         如果使用mongo,从本地数据库获取,失败则在线获取
 
@@ -172,11 +177,26 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
             source {enum} -- 来源 QA.DATASOURCE
             output {enum} -- 输出类型 QA.OUTPUT_FORMAT
         """
-        res = None
-        if source == DATASOURCE.MONGO:
-            # res = QAQueryAdv.QA_fetch_option_day_adv(code, start, end)
-            raise NotImplementedError('CURRENT NOT FINISH THIS METHOD')
-        # print(type(res))
+        res = QA.QA_fetch_cryptocurrency_min_adv(
+            code,
+            # code=[
+            #     'OKEX.BTC-USDT',
+            #     'OKEX.ETH-USDT',
+            # ],
+            start, #='2017-10-01',
+            end, #='2020-05-28 18:10:00',
+            frequence, #='60min'
+        )
+        # print(data2.data)
+        # data_4h = QA.QA_DataStruct_CryptoCurrency_min(data2.resample('4h'))
+        # print(data_4h.data)
+
+        # try:
+        #     res = QAQueryAdv.QA_fetch_stock_min_adv(
+        #         code, start, end, frequence=frequence)
+        # except:
+        #     res = None
+
 
         if output is OUTPUT_FORMAT.DATAFRAME:
             return res.data
@@ -202,8 +222,8 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
         print(self.acc)
 
         print(self.acc.market_type)
-        data = self._fetch_btc_data(self.code, self.start, self.end, source=QA.DATASOURCE.MONGO,
-                               frequence=self.frequence, output=QA.OUTPUT_FORMAT.DATASTRUCT)
+        data = self._fetch_btc_data(self.code, self.start, self.end,
+                                    frequence=self.frequence, output=QA.OUTPUT_FORMAT.DATASTRUCT)
 
         data.data.apply(self.x1, axis=1)
 
@@ -289,4 +309,4 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
 
 
 if __name__ == '__main__':
-    QAStrategyBitcoinBase(code=['000001', '000002']).run_sim()
+    QAStrategyBitcoinBase(code=['OKEX.1INCH-USDT']).debug()   #'OKEX.BTC-USDT' 'OKEX.BTC-USDT'
