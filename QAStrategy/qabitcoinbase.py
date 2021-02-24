@@ -1,0 +1,292 @@
+# coding=utf-8
+
+"""
+bitcoin_base
+"""
+import uuid
+import datetime
+import json
+import os
+import threading
+import requests
+import pandas as pd
+import pymongo
+from qaenv import (eventmq_ip, eventmq_password, eventmq_port,
+                   eventmq_username, mongo_ip)
+
+import QUANTAXIS as QA
+from QUANTAXIS.QAARP import QA_Risk, QA_User
+from QUANTAXIS.QAEngine.QAThreadEngine import QA_Thread
+from QUANTAXIS.QAUtil.QAParameter import MARKET_TYPE, RUNNING_ENVIRONMENT, ORDER_DIRECTION, OUTPUT_FORMAT, DATASOURCE
+from QAPUBSUB.consumer import subscriber_topic,  subscriber_routing
+from QAPUBSUB.producer import publisher_routing
+from QAStrategy.qactabase import QAStrategyCTABase
+from QIFIAccount import QIFI_Account
+
+# BTC 交易策略...
+class QAStrategyBitcoinBase(QAStrategyCTABase):
+
+    def __init__(self, code=['OKB-USDT'], frequence='1min', strategy_id='QA_STRATEGY', risk_check_gap=1, portfolio='default',
+                 start='2019-01-01', end='2019-10-21', send_wx=False, market_type='bitcoin_okex',
+                 data_host=eventmq_ip, data_port=eventmq_port, data_user=eventmq_username, data_password=eventmq_password,
+                 trade_host=eventmq_ip, trade_port=eventmq_port, trade_user=eventmq_username, trade_password=eventmq_password,
+                 taskid=None, mongo_ip=mongo_ip):
+        super().__init__(code=code, frequence=frequence, strategy_id=strategy_id, risk_check_gap=risk_check_gap, portfolio=portfolio,
+                         start=start, end=end, send_wx=send_wx,
+                         data_host=eventmq_ip, data_port=eventmq_port, data_user=eventmq_username, data_password=eventmq_password,
+                         trade_host=eventmq_ip, trade_port=eventmq_port, trade_user=eventmq_username, trade_password=eventmq_password,
+                         taskid=taskid, mongo_ip=mongo_ip)
+
+        self.code = code
+        self.send_wx = send_wx
+
+    def _init_market_type(self):
+        self.market_type = MARKET_TYPE.CRYPTOCURRENCY
+
+    def subscribe_data(self, code, frequence, data_host, data_port, data_user, data_password):
+        """[summary]
+
+        Arguments:
+            code {[type]} -- [description]
+            frequence {[type]} -- [description]
+        """
+        
+        self.sub = subscriber_topic(exchange='realtime_btc_{}'.format(
+            frequence), host=data_host, port=data_port, user=data_user, password=data_password, routing_key='')
+        for item in code:
+            self.sub.add_sub(exchange='realtime_btc_{}'.format(
+                frequence), routing_key=item)
+        self.sub.callback = self.callback
+
+    def upcoming_data(self, new_bar):
+        """upcoming_bar :
+
+        Arguments:
+            new_bar {json} -- [description]
+        """
+        self._market_data = pd.concat([self._old_data, new_bar])
+        # QA.QA_util_log_info(self._market_data)
+
+        if self.isupdate:
+            self.update()
+            self.isupdate = False
+
+        self.update_account()
+        # self.positions.on_price_change(float(new_bar['close']))
+        self.on_bar(new_bar)
+
+    def ind2str(self, ind, ind_type):
+        z = ind.tail(1).reset_index().to_dict(orient='records')[0]
+        return json.dumps({'topic': ind_type, 'code': self.code, 'type': self.frequence, 'data': z})
+
+    def callback(self, a, b, c, body):
+        """在strategy的callback中,我们需要的是
+
+        1. 更新数据
+        2. 更新bar
+        3. 更新策略状态
+        4. 推送事件
+
+        Arguments:
+            a {[type]} -- [description]
+            b {[type]} -- [description]
+            c {[type]} -- [description]
+            body {[type]} -- [description]
+        """
+
+        self.new_data = json.loads(str(body, encoding='utf-8'))
+
+        self.latest_price[self.new_data['code']] = self.new_data['close']
+
+        self.running_time = self.new_data['datetime']
+        if self.dt != str(self.new_data['datetime'])[0:16]:
+            # [0:16]是分钟线位数
+            print('update!!!!!!!!!!!!')
+            self.dt = str(self.new_data['datetime'])[0:16]
+            self.isupdate = True
+
+            
+        self.acc.on_price_change(self.new_data['code'], self.new_data['close'])
+        bar = pd.DataFrame([self.new_data]).set_index(['datetime', 'code']
+                                                      ).loc[:, ['open', 'high', 'low', 'close', 'volume']]
+        self.upcoming_data(bar)
+
+    def _debug_sim(self):
+        self.running_mode = 'sim'
+
+        last_day = QA.QA_util_get_last_day(QA.QA_util_get_real_date(str(datetime.date.today())))
+        # self._old_data = QA.QA_fetch_stock_min(self.code, last_day , str(datetime.datetime.now()), format='pd', frequence=self.frequence).set_index(['datetime', 'code'])
+
+        # 模拟盘就是分钟？
+        if self.frequence.endswith('min'):
+            self._old_data = QA.QA_fetch_get_stock_min('tdx', self.code.upper(), last_day, str(datetime.datetime.now()), self.frequence)[:-1].set_index(['datetime', 'code'])
+            # self._old_data = self._old_data.assign(volume=self._old_data.trade).loc[:, [
+            #     'open', 'high', 'low', 'close', 'volume']]
+        else:
+            self._old_data = pd.DataFrame()
+        print("self._old_data: len = ", len(self._old_data))
+        # 重排？
+        self._old_data = self._old_data.loc[:, [
+            'open', 'high', 'low', 'close', 'volume']]
+        # 指定实时数据库..
+        self.database = pymongo.MongoClient(mongo_ip).QAREALTIME
+        # 账户Collection
+        self.client = self.database.account
+        self.subscriber_client = self.database.subscribe
+        # 创建策略账户(一个基于快期DIFF协议的QA实时账户协议)...
+        self.acc = QIFI_Account(
+            username=self.strategy_id, password=self.strategy_id, trade_host=mongo_ip)
+        self.acc.initial()
+        # 分发？
+        self.pub = publisher_routing(exchange='QAORDER_ROUTER', host=self.trade_host,
+                                     port=self.trade_port, user=self.trade_user, password=self.trade_password)
+        # 注册一个MQ
+        self.subscribe_data(self.code, self.frequence, self.data_host,
+                            self.data_port, self.data_user, self.data_password)
+
+        self.database.strategy_schedule.job_control.update(
+            {'strategy_id': self.strategy_id},
+            {'strategy_id': self.strategy_id, 'taskid': self.taskid,
+             'filepath': os.path.abspath(__file__), 'status': 200}, upsert=True)
+
+        # threading.Thread(target=, daemon=True).start()
+        self.sub.start()
+
+    def run(self):
+        while True:
+            pass
+
+    def init_strategy(self):
+        pass
+
+    def _fetch_btc_data(code, start, end, frequence, market, source, output=OUTPUT_FORMAT.DATAFRAME):
+        """一个统一的获取k线的方法
+        如果使用mongo,从本地数据库获取,失败则在线获取
+
+        Arguments:
+            code {str/list} -- 期货/股票的代码
+            start {str} -- 开始日期
+            end {str} -- 结束日期
+            frequence {enum} -- 频率 QA.FREQUENCE
+            market {enum} -- 市场 QA.MARKET_TYPE
+            source {enum} -- 来源 QA.DATASOURCE
+            output {enum} -- 输出类型 QA.OUTPUT_FORMAT
+        """
+        res = None
+        if source == DATASOURCE.MONGO:
+            # res = QAQueryAdv.QA_fetch_option_day_adv(code, start, end)
+            raise NotImplementedError('CURRENT NOT FINISH THIS METHOD')
+        # print(type(res))
+
+        if output is OUTPUT_FORMAT.DATAFRAME:
+            return res.data
+        elif output is OUTPUT_FORMAT.DATASTRUCT:
+            return res
+        elif output is OUTPUT_FORMAT.NDARRAY:
+            return res.to_numpy()
+        elif output is OUTPUT_FORMAT.JSON:
+            return res.to_json()
+        elif output is OUTPUT_FORMAT.LIST:
+            return res.to_list()
+
+
+    def debug(self):
+        self.running_mode = 'backtest'
+        self.database = pymongo.MongoClient(mongo_ip).QUANTAXIS
+        user = QA_User(username="admin", password='admin')
+        port = user.new_portfolio(self.portfolio)
+        self.acc = port.new_accountpro(
+            account_cookie=self.strategy_id, init_cash=self.init_cash, market_type=self.market_type, frequence= self.frequence)
+
+        self.init_strategy()
+        print(self.acc)
+
+        print(self.acc.market_type)
+        data = self._fetch_btc_data(self.code, self.start, self.end, source=QA.DATASOURCE.MONGO,
+                               frequence=self.frequence, output=QA.OUTPUT_FORMAT.DATASTRUCT)
+
+        data.data.apply(self.x1, axis=1)
+
+    def update_account(self):
+        if self.running_mode == 'sim':
+            QA.QA_util_log_info('{} UPDATE ACCOUNT'.format(
+                str(datetime.datetime.now())))
+
+            self.accounts = self.acc.account_msg
+            self.orders = self.acc.orders
+            self.positions = self.acc.positions
+
+            self.trades = self.acc.trades
+            self.updatetime = self.acc.dtstr
+        elif self.running_mode == 'backtest':
+            #self.positions = self.acc.get_position(self.code)
+            self.positions = self.acc.positions
+
+    def send_order(self,  direction='BUY', offset='OPEN', code=None, price=3925, volume=10, order_id='',):
+
+        towards = eval('ORDER_DIRECTION.{}_{}'.format(direction, offset))
+        order_id = str(uuid.uuid4()) if order_id == '' else order_id
+
+        if self.market_type == QA.MARKET_TYPE.STOCK_CN:
+            """
+            在此对于股票的部分做一些转换
+            """
+            if towards == ORDER_DIRECTION.SELL_CLOSE:
+                towards = ORDER_DIRECTION.SELL
+            elif towards == ORDER_DIRECTION.BUY_OPEN:
+                towards = ORDER_DIRECTION.BUY
+
+        if isinstance(price, float):
+            pass
+        elif isinstance(price, pd.Series):
+            price = price.values[0]
+
+        if self.running_mode == 'sim':
+
+            QA.QA_util_log_info(
+                '============ {} SEND ORDER =================='.format(order_id))
+            QA.QA_util_log_info('direction{} offset {} price{} volume{}'.format(
+                direction, offset, price, volume))
+
+            if self.check_order(direction, offset):
+                self.last_order_towards = {'BUY': '', 'SELL': ''}
+                self.last_order_towards[direction] = offset
+                now = str(datetime.datetime.now())
+
+                order = self.acc.send_order(
+                    code=code, towards=towards, price=price, amount=volume, order_id=order_id)
+                order['topic'] = 'send_order'
+                self.pub.pub(
+                    json.dumps(order), routing_key=self.strategy_id)
+
+                self.acc.make_deal(order)
+                self.bar_order['{}_{}'.format(direction, offset)] = self.bar_id
+                if self.send_wx:
+                    for user in self.subscriber_list:
+                        QA.QA_util_log_info(self.subscriber_list)
+                        try:
+                            "oL-C4w2WlfyZ1vHSAHLXb2gvqiMI"
+                            """http://www.yutiansut.com/signal?user_id=oL-C4w1HjuPRqTIRcZUyYR0QcLzo&template=xiadan_report&\
+                                        strategy_id=test1&realaccount=133496&code=rb1910&order_direction=BUY&\
+                                        order_offset=OPEN&price=3600&volume=1&order_time=20190909
+                            """
+
+                            requests.post('http://www.yutiansut.com/signal?user_id={}&template={}&strategy_id={}&realaccount={}&code={}&order_direction={}&order_offset={}&price={}&volume={}&order_time={}'.format(
+                                user, "xiadan_report", self.strategy_id, self.acc.user_id, code, direction, offset, price, volume, now))
+                        except Exception as e:
+                            QA.QA_util_log_info(e)
+
+            else:
+                QA.QA_util_log_info('failed in ORDER_CHECK')
+
+        elif self.running_mode == 'backtest':
+
+            self.bar_order['{}_{}'.format(direction, offset)] = self.bar_id
+
+            self.acc.receive_simpledeal(
+                code=code, trade_time=self.running_time, trade_towards=towards, trade_amount=volume, trade_price=price, order_id=order_id)
+            #self.positions = self.acc.get_position(self.code)
+
+
+if __name__ == '__main__':
+    QAStrategyBitcoinBase(code=['000001', '000002']).run_sim()

@@ -66,15 +66,19 @@ class QAStrategyCTABase():
         self.send_wx = send_wx
         self.last_order_towards = {'BUY': '', 'SELL': ''}
         self.dt = ''
+        self._init_market_type()
+
+        self.bar_order = {'BUY_OPEN': 0, 'SELL_OPEN': 0,
+                          'BUY_CLOSE': 0, 'SELL_CLOSE': 0}
+
+    ## 初始化
+    def _init_market_type(self):
         if isinstance(self.code, str):
             self.market_type = MARKET_TYPE.FUTURE_CN if re.search(
                 r'[a-zA-z]+', self.code) else MARKET_TYPE.STOCK_CN
         else:
             self.market_type = MARKET_TYPE.FUTURE_CN if re.search(
                 r'[a-zA-z]+', self.code[0]) else MARKET_TYPE.STOCK_CN
-
-        self.bar_order = {'BUY_OPEN': 0, 'SELL_OPEN': 0,
-                          'BUY_CLOSE': 0, 'SELL_CLOSE': 0}
 
     @property
     def bar_id(self):

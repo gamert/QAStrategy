@@ -86,12 +86,7 @@ class QAStrategyCTABase():
             self.last_order_towards = dict(
                 zip(self.code, [{'BUY': '', 'SELL': ''} for i in range(len(self.code))]))
         self.dt = ''
-        if isinstance(self.code, str):
-            self.market_type = MARKET_TYPE.FUTURE_CN if re.search(
-                r'[a-zA-z]+', self.code) else MARKET_TYPE.STOCK_CN
-        else:
-            self.market_type = MARKET_TYPE.FUTURE_CN if re.search(
-                r'[a-zA-z]+', self.code[0]) else MARKET_TYPE.STOCK_CN
+        self._init_market_type()
 
         self.bar_order = {'BUY_OPEN': 0, 'SELL_OPEN': 0,
                           'BUY_CLOSE': 0, 'SELL_CLOSE': 0}
@@ -100,6 +95,13 @@ class QAStrategyCTABase():
         self._cached_data = []
         self.user_init()
 
+    def _init_market_type(self):
+        if isinstance(self.code, str):
+            self.market_type = MARKET_TYPE.FUTURE_CN if re.search(
+                r'[a-zA-z]+', self.code) else MARKET_TYPE.STOCK_CN
+        else:
+            self.market_type = MARKET_TYPE.FUTURE_CN if re.search(
+                r'[a-zA-z]+', self.code[0]) else MARKET_TYPE.STOCK_CN
     @property
     def bar_id(self):
         return len(self._market_data)
