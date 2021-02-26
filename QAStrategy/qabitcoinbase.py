@@ -18,15 +18,15 @@ import QUANTAXIS as QA
 from QUANTAXIS.QAARP import QA_Risk, QA_User
 from QUANTAXIS.QAEngine.QAThreadEngine import QA_Thread
 from QUANTAXIS.QAUtil.QAParameter import MARKET_TYPE, RUNNING_ENVIRONMENT, ORDER_DIRECTION, OUTPUT_FORMAT, DATASOURCE
-from QAPUBSUB.consumer import subscriber_topic,  subscriber_routing
-from QAPUBSUB.producer import publisher_routing
+from QAPUBSUB.consumer import subscriber_topic, subscriber_routing, subscriber
+from QAPUBSUB.producer import publisher_routing, publisher_topic
 from QAStrategy.qactabase import QAStrategyCTABase
 from QIFIAccount import QIFI_Account
 
 # BTC 交易策略...
 class QAStrategyBitcoinBase(QAStrategyCTABase):
 
-    def __init__(self, code=['OKB-USDT'], frequence='1min', strategy_id='QA_STRATEGY', risk_check_gap=1, portfolio='default',
+    def __init__(self, code=['OKEX.OKB-USDT'], frequence='1min', strategy_id='QA_STRATEGY', risk_check_gap=1, portfolio='default',
                  start='2021-02-01', end='2021-02-23', send_wx=False, market_type='bitcoin_okex',
                  data_host=eventmq_ip, data_port=eventmq_port, data_user=eventmq_username, data_password=eventmq_password,
                  trade_host=eventmq_ip, trade_port=eventmq_port, trade_user=eventmq_username, trade_password=eventmq_password,
@@ -39,10 +39,11 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
 
         self.code = code
         self.send_wx = send_wx
-
+    # 修改市场类型:
     def _init_market_type(self):
         self.market_type = MARKET_TYPE.CRYPTOCURRENCY
 
+    # code = ['OKEX.1INCH-USDT']
     def subscribe_data(self, code, frequence, data_host, data_port, data_user, data_password):
         """[summary]
 
@@ -50,75 +51,34 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
             code {[type]} -- [description]
             frequence {[type]} -- [description]
         """
-        
-        self.sub = subscriber_topic(exchange='realtime_btc_{}'.format(
-            frequence), host=data_host, port=data_port, user=data_user, password=data_password, routing_key='')
-        for item in code:
-            self.sub.add_sub(exchange='realtime_btc_{}'.format(
-                frequence), routing_key=item)
-        self.sub.callback = self.callback
+        if frequence.endswith('min'):
+            self.sub = subscriber(exchange='realtime_{}_{}'.format(
+                frequence, code), host=data_host, port=data_port, user=data_user, password=data_password)
+            self.sub.callback = self.callback
+        # elif frequence.endswith('s'):
+        #     import re
+        #     self._num_cached = 2*int(re.findall(r'\d+', self.frequence)[0])
+        #     self.sub = subscriber_routing(
+        #         exchange='CTPX', routing_key=code, host=data_host, port=data_port, user=data_user, password=data_password)
+        #     self.sub.callback = self.second_callback
+        elif frequence.endswith('tick'):
+            self._num_cached = 1
+            self.sub = subscriber_routing(
+                exchange='tick', routing_key=code, host=data_host, port=data_port, user=data_user, password=data_password)
+            self.sub.callback = self.tick_callback
 
-    def upcoming_data(self, new_bar):
-        """upcoming_bar :
+    def on_sync(self):
+        if self.running_mode != 'backtest':
+            self.pubacc.pub(json.dumps(self.acc.message),
+                            routing_key=self.strategy_id)
 
-        Arguments:
-            new_bar {json} -- [description]
-        """
-        self._market_data = pd.concat([self._old_data, new_bar])
-        # QA.QA_util_log_info(self._market_data)
-
-        if self.isupdate:
-            self.update()
-            self.isupdate = False
-
-        self.update_account()
-        # self.positions.on_price_change(float(new_bar['close']))
-        self.on_bar(new_bar)
-
-    def ind2str(self, ind, ind_type):
-        z = ind.tail(1).reset_index().to_dict(orient='records')[0]
-        return json.dumps({'topic': ind_type, 'code': self.code, 'type': self.frequence, 'data': z})
-
-    def callback(self, a, b, c, body):
-        """在strategy的callback中,我们需要的是
-
-        1. 更新数据
-        2. 更新bar
-        3. 更新策略状态
-        4. 推送事件
-
-        Arguments:
-            a {[type]} -- [description]
-            b {[type]} -- [description]
-            c {[type]} -- [description]
-            body {[type]} -- [description]
-        """
-
-        self.new_data = json.loads(str(body, encoding='utf-8'))
-
-        self.latest_price[self.new_data['code']] = self.new_data['close']
-
-        self.running_time = self.new_data['datetime']
-        if self.dt != str(self.new_data['datetime'])[0:16]:
-            # [0:16]是分钟线位数
-            print('update!!!!!!!!!!!!')
-            self.dt = str(self.new_data['datetime'])[0:16]
-            self.isupdate = True
-
-            
-        self.acc.on_price_change(self.new_data['code'], self.new_data['close'])
-        bar = pd.DataFrame([self.new_data]).set_index(['datetime', 'code']
-                                                      ).loc[:, ['open', 'high', 'low', 'close', 'volume']]
-        self.upcoming_data(bar)
-
-    # 启动模拟盘...
     def _debug_sim(self):
         self.running_mode = 'sim'
 
         last_day = QA.QA_util_get_last_day(QA.QA_util_get_real_date(str(datetime.date.today())))
 
         if self.frequence.endswith('min'):
-            self._old_data = self._fetch_get_btc_min(self.code.upper(), last_day, str(datetime.datetime.now()), self.frequence)[:-1].set_index(['datetime', 'code'])
+            self._old_data = self._fetch_get_btc_min(self.code, last_day, str(datetime.datetime.now()), self.frequence)[:-1];##.set_index(['datetime', 'code'])
             # self._old_data = self._old_data.assign(volume=self._old_data.trade).loc[:, [
             #     'open', 'high', 'low', 'close', 'volume']]
         else:
@@ -136,9 +96,12 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
         self.acc = QIFI_Account(
             username=self.strategy_id, password=self.strategy_id, trade_host=mongo_ip)
         self.acc.initial()
+        self.acc.on_sync = self.on_sync
         # 分发？
         self.pub = publisher_routing(exchange='QAORDER_ROUTER', host=self.trade_host,
                                      port=self.trade_port, user=self.trade_user, password=self.trade_password)
+        self.pubacc = publisher_topic(exchange='QAAccount', host=self.trade_host,
+                                      port=self.trade_port, user=self.trade_user, password=self.trade_password)
         # 注册一个MQ
         self.subscribe_data(self.code, self.frequence, self.data_host,
                             self.data_port, self.data_user, self.data_password)
@@ -156,13 +119,20 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
             pass
 
     def init_strategy(self):
+        print("init_strategy")
         pass
 
     def on_1min_bar(self):
+        print("on_1min_bar")
         pass
 
+    def on_bar(self, bar):
+        print("on_bar")
+        pass
+
+    # 返回DF
     def _fetch_get_btc_min(self, codes, start, end, level='1min'):
-        return QA.QA_fetch_cryptocurrency_min_adv(codes, start, end, level)
+        return QA.QA_fetch_cryptocurrency_min_adv(codes, start, end, level).data
 
     def _fetch_btc_data(self, code, start, end, frequence, output=OUTPUT_FORMAT.DATAFRAME):
         """一个统一的获取k线的方法
@@ -209,7 +179,7 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
         elif output is OUTPUT_FORMAT.LIST:
             return res.to_list()
 
-
+    # 获取his数据后
     def debug(self):
         self.running_mode = 'backtest'
         self.database = pymongo.MongoClient(mongo_ip).QUANTAXIS
@@ -227,86 +197,7 @@ class QAStrategyBitcoinBase(QAStrategyCTABase):
 
         data.data.apply(self.x1, axis=1)
 
-    def update_account(self):
-        if self.running_mode == 'sim':
-            QA.QA_util_log_info('{} UPDATE ACCOUNT'.format(
-                str(datetime.datetime.now())))
-
-            self.accounts = self.acc.account_msg
-            self.orders = self.acc.orders
-            self.positions = self.acc.positions
-
-            self.trades = self.acc.trades
-            self.updatetime = self.acc.dtstr
-        elif self.running_mode == 'backtest':
-            #self.positions = self.acc.get_position(self.code)
-            self.positions = self.acc.positions
-
-    def send_order(self,  direction='BUY', offset='OPEN', code=None, price=3925, volume=10, order_id='',):
-
-        towards = eval('ORDER_DIRECTION.{}_{}'.format(direction, offset))
-        order_id = str(uuid.uuid4()) if order_id == '' else order_id
-
-        if self.market_type == QA.MARKET_TYPE.STOCK_CN:
-            """
-            在此对于股票的部分做一些转换
-            """
-            if towards == ORDER_DIRECTION.SELL_CLOSE:
-                towards = ORDER_DIRECTION.SELL
-            elif towards == ORDER_DIRECTION.BUY_OPEN:
-                towards = ORDER_DIRECTION.BUY
-
-        if isinstance(price, float):
-            pass
-        elif isinstance(price, pd.Series):
-            price = price.values[0]
-
-        if self.running_mode == 'sim':
-
-            QA.QA_util_log_info(
-                '============ {} SEND ORDER =================='.format(order_id))
-            QA.QA_util_log_info('direction{} offset {} price{} volume{}'.format(
-                direction, offset, price, volume))
-
-            if self.check_order(direction, offset):
-                self.last_order_towards = {'BUY': '', 'SELL': ''}
-                self.last_order_towards[direction] = offset
-                now = str(datetime.datetime.now())
-
-                order = self.acc.send_order(
-                    code=code, towards=towards, price=price, amount=volume, order_id=order_id)
-                order['topic'] = 'send_order'
-                self.pub.pub(
-                    json.dumps(order), routing_key=self.strategy_id)
-
-                self.acc.make_deal(order)
-                self.bar_order['{}_{}'.format(direction, offset)] = self.bar_id
-                if self.send_wx:
-                    for user in self.subscriber_list:
-                        QA.QA_util_log_info(self.subscriber_list)
-                        try:
-                            "oL-C4w2WlfyZ1vHSAHLXb2gvqiMI"
-                            """http://www.yutiansut.com/signal?user_id=oL-C4w1HjuPRqTIRcZUyYR0QcLzo&template=xiadan_report&\
-                                        strategy_id=test1&realaccount=133496&code=rb1910&order_direction=BUY&\
-                                        order_offset=OPEN&price=3600&volume=1&order_time=20190909
-                            """
-
-                            requests.post('http://www.yutiansut.com/signal?user_id={}&template={}&strategy_id={}&realaccount={}&code={}&order_direction={}&order_offset={}&price={}&volume={}&order_time={}'.format(
-                                user, "xiadan_report", self.strategy_id, self.acc.user_id, code, direction, offset, price, volume, now))
-                        except Exception as e:
-                            QA.QA_util_log_info(e)
-
-            else:
-                QA.QA_util_log_info('failed in ORDER_CHECK')
-
-        elif self.running_mode == 'backtest':
-
-            self.bar_order['{}_{}'.format(direction, offset)] = self.bar_id
-
-            self.acc.receive_simpledeal(
-                code=code, trade_time=self.running_time, trade_towards=towards, trade_amount=volume, trade_price=price, order_id=order_id)
-            #self.positions = self.acc.get_position(self.code)
-
-
 if __name__ == '__main__':
-    QAStrategyBitcoinBase(code=['OKEX.1INCH-USDT']).debug()   #'OKEX.BTC-USDT' 'OKEX.BTC-USDT'
+    ##'OKEX.BTC-USDT' 'OKEX.BTC-USDT'
+    #QAStrategyBitcoinBase(code=['OKEX.1INCH-USDT']).debug()
+    QAStrategyBitcoinBase(code='OKEX.1INCH-USDT').run_sim()
