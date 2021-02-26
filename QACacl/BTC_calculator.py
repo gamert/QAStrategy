@@ -11,7 +11,6 @@ import time
 from QAPUBSUB.consumer import subscriber, subscriber_routing
 from QAPUBSUB.producer import publisher, publisher_topic
 from QUANTAXIS.QAEngine.QAThreadEngine import QA_Thread
-from QUANTAXIS import QA_indicator_BOLL
 
 # 每个Cacl负责一个频率的数据保存和一组计算结果(对应一组Indicator)
 #
@@ -20,9 +19,9 @@ from QACacl.StrategyCacl import StrategyCacl_BOLL
 
 
 
-
-class BTCCaluator(QA_Thread):
-    def __init__(self, code: list, frequency='5min', strategy="BTCEnhance", init_data=None):
+# 数据
+class QAMaketData(QA_Thread):
+    def __init__(self, code: list, frequency='5min', init_data=None):
         """
         :param code:
         :param indicator_fun:
@@ -46,7 +45,7 @@ class BTCCaluator(QA_Thread):
             return
         self.market_data = init_data
         self.stock_code = code
-        self.strategy = strategy
+        self.cacls = []
 
         # 接收stock 重采样的数据
         self.sub = subscriber(
@@ -57,7 +56,10 @@ class BTCCaluator(QA_Thread):
         #     host=self.data_host, exchange='realtime_stock_calculator_{}_{}_min'.format(self.strategy, self.frequency))
         threading.Thread(target=self.sub.start).start()
 
-        print("REALTIME_STOCK_CACULATOR INIT, strategy: %s frequency: %s" % (self.strategy, self.frequency))
+        #print("REALTIME_STOCK_CACULATOR INIT, strategy: %s frequency: %s" % (self.strategy, self.frequency))
+
+    def add_cacl(self,cc):
+        self.cacls.append(cc)
 
     def unsubscribe(self, item):
         # remove code from market data
@@ -73,10 +75,13 @@ class BTCCaluator(QA_Thread):
             self.market_data = context
         else:
             self.market_data.update(context)
-        # print(self.market_data)
-        res_buy, res_sell = StrategyCacl_BOLL(self.market_data)
 
-        #
+        # 遍历计算...
+        for cc in self.cacls:
+            cc.do_sel()
+
+        # print(self.market_data)
+        # res_buy, res_sell = StrategyCacl_BOLL(self.market_data)
 
         # self.pub.pub(json.dumps(res_buy.to_dict(), cls=NpEncoder), routing_key="calculator.buy")
         # self.pub.pub(json.dumps(res_sell.to_dict(), cls=NpEncoder), routing_key="calculator.sell")
@@ -84,7 +89,7 @@ class BTCCaluator(QA_Thread):
     def run(self):
         import datetime
         while True:
-            print(datetime.datetime.now(), "realtime stock calculator is running")
+            print(datetime.datetime.now(), "realtime stock calculator is running, frequency=", self.frequency)
             time.sleep(1)
 
 
