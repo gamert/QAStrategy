@@ -2,7 +2,7 @@ from QAStrategy import QAStrategyCTABase
 import QUANTAXIS as QA
 import pprint
 
-#
+# 1a5a1c37219acda3a569e8b809bd86b06ebc7c34d8dee170ef5ad5d1
 class Future_IC2009(QAStrategyCTABase):
 
     def on_bar(self, bar):

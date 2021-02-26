@@ -15,6 +15,12 @@ from QUANTAXIS import QA_indicator_BOLL
 
 # 每个Cacl负责一个频率的数据保存和一组计算结果(对应一组Indicator)
 #
+from QACacl.StrategyCacl import StrategyCacl_BOLL
+
+
+
+
+
 class BTCCaluator(QA_Thread):
     def __init__(self, code: list, frequency='5min', strategy="BTCEnhance", init_data=None):
         """
@@ -44,7 +50,7 @@ class BTCCaluator(QA_Thread):
 
         # 接收stock 重采样的数据
         self.sub = subscriber(
-            host=self.data_host, exchange='realtime_stock_{}_min'.format(self.frequency))
+            host=self.data_host, exchange='realtime_{}_{}_min'.format(code,self.frequency))
         self.sub.callback = self.stock_min_callback
         # 发送stock indicator result
         # self.pub = publisher_topic(
@@ -68,22 +74,9 @@ class BTCCaluator(QA_Thread):
         else:
             self.market_data.update(context)
         # print(self.market_data)
+        res_buy, res_sell = StrategyCacl_BOLL(self.market_data)
 
-        # calculate indicator
-        ind = self.market_data.groupby(['code']).apply(QA_indicator_BOLL)
-        res = ind.join(self.market_data).dropna().round(2)
-        res.set_value(index=res[res['LB'] >= res.close].index, col='buyorsell', value=1)  # 买入信号
-        res.set_value(index=res[res['UB'] < res.close].index, col='buyorsell', value=-1)  # 卖出信号
-        res['change'] = res['buyorsell'].diff()  # 计算指标信号是否反转
-        res = res.groupby('code').tail(1)  # 取最新的信号
-        # Buy信号的股票池
-        res_buy: pd.DataFrame = res[res.change > 0].reset_index()
-        # res_buy_code = res_buy['code']
-        print("calculator.buy", res_buy)
-        # Sell信号的股票池
-        res_sell: pd.DataFrame = res[res.change < 0].reset_index()
-        # res_sell_code = res_sell['code']
-        print("calculator.sell", res_sell)
+        #
 
         # self.pub.pub(json.dumps(res_buy.to_dict(), cls=NpEncoder), routing_key="calculator.buy")
         # self.pub.pub(json.dumps(res_sell.to_dict(), cls=NpEncoder), routing_key="calculator.sell")
@@ -101,8 +94,6 @@ if __name__ == '__main__':
     code_list = ['000001', '000002']  # TODO HS300 STOCK CODE LIST
     start_date = '2019-09-29'
     end_date = '2019-09-30'
-    # TODO 若遇上当天除权除息可能出现计算错误
-    # TODO should resample and the data format is same to the mq_min_data
     init_min_data = QA.QA_fetch_stock_min_adv(code_list, start_date, end_date)
     if init_min_data is not None:
         init_min_data = init_min_data.data
