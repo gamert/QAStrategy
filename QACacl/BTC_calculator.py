@@ -1,14 +1,8 @@
-# **************************************************************************** #
-#                                                                              #
-#                                                         :::      ::::::::    #
-#    stock_calculator.py                                :+:      :+:    :+:    #
-#                                                     +:+ +:+         +:+      #
-#    By: zhongjy1992 <zhongjy1992@outlook.com>      +#+  +:+       +#+         #
-#                                                 +#+#+#+#+#+   +#+            #
-#    Created: 2019/10/02 13:44:50 by zhongjy1992       #+#    #+#              #
-#    Updated: 2019/10/02 21:41:13 by zhongjy1992      ###   ########.fr        #
-#                                                                              #
-# **************************************************************************** #
+# coding=utf-8
+
+"""
+btc_cacl
+"""
 import json
 import pandas as pd
 import threading
@@ -17,16 +11,14 @@ import time
 from QAPUBSUB.consumer import subscriber, subscriber_routing
 from QAPUBSUB.producer import publisher, publisher_topic
 from QUANTAXIS.QAEngine.QAThreadEngine import QA_Thread
-from QARealtimeCollector.setting import eventmq_ip
-from QARealtimeCollector.datahandler.realtime_resampler import NpEncoder
 from QUANTAXIS import QA_indicator_BOLL
 
-class RTCCaluator(QA_Thread):
-    # 只写了个样例框架
-    def __init__(self, code_list: list, frequency='60min', strategy="HS300Enhance", init_data=None):
+# 每个Cacl负责一个频率的数据保存和一组计算结果(对应一组Indicator)
+#
+class BTCCaluator(QA_Thread):
+    def __init__(self, code: list, frequency='5min', strategy="BTCEnhance", init_data=None):
         """
-
-        :param code_list:
+        :param code:
         :param indicator_fun:
         :param frequency:
         :param strategy:
@@ -47,16 +39,16 @@ class RTCCaluator(QA_Thread):
             print("unknown frequency: %s" % frequency)
             return
         self.market_data = init_data
-        self.stock_code_list = code_list
+        self.stock_code = code
         self.strategy = strategy
 
         # 接收stock 重采样的数据
         self.sub = subscriber(
-            host=eventmq_ip, exchange='realtime_stock_{}_min'.format(self.frequency))
+            host=self.data_host, exchange='realtime_stock_{}_min'.format(self.frequency))
         self.sub.callback = self.stock_min_callback
         # 发送stock indicator result
-        self.pub = publisher_topic(
-            host=eventmq_ip, exchange='realtime_stock_calculator_{}_{}_min'.format(self.strategy, self.frequency))
+        # self.pub = publisher_topic(
+        #     host=self.data_host, exchange='realtime_stock_calculator_{}_{}_min'.format(self.strategy, self.frequency))
         threading.Thread(target=self.sub.start).start()
 
         print("REALTIME_STOCK_CACULATOR INIT, strategy: %s frequency: %s" % (self.strategy, self.frequency))
@@ -86,15 +78,15 @@ class RTCCaluator(QA_Thread):
         res = res.groupby('code').tail(1)  # 取最新的信号
         # Buy信号的股票池
         res_buy: pd.DataFrame = res[res.change > 0].reset_index()
-        # res_buy_code_list = res_buy['code']
+        # res_buy_code = res_buy['code']
         print("calculator.buy", res_buy)
         # Sell信号的股票池
         res_sell: pd.DataFrame = res[res.change < 0].reset_index()
-        # res_sell_code_list = res_sell['code']
+        # res_sell_code = res_sell['code']
         print("calculator.sell", res_sell)
 
-        self.pub.pub(json.dumps(res_buy.to_dict(), cls=NpEncoder), routing_key="calculator.buy")
-        self.pub.pub(json.dumps(res_sell.to_dict(), cls=NpEncoder), routing_key="calculator.sell")
+        # self.pub.pub(json.dumps(res_buy.to_dict(), cls=NpEncoder), routing_key="calculator.buy")
+        # self.pub.pub(json.dumps(res_sell.to_dict(), cls=NpEncoder), routing_key="calculator.sell")
 
     def run(self):
         import datetime
@@ -115,6 +107,6 @@ if __name__ == '__main__':
     if init_min_data is not None:
         init_min_data = init_min_data.data
     from QUANTAXIS import QA_indicator_BOLL
-    RTCCaluator(
+    BTCCaluator(
         code_list=code_list, frequency='5min', strategy="HS300Enhance", init_data=init_min_data
     ).start()
