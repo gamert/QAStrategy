@@ -125,7 +125,7 @@ class QAStrategyCTABase():
       code = self.get_code()
       return self.get_positions(code).open_price_short
 
-
+    # 账户同步: 1. 绑定到acc.sync 上 ? 2.主动触发...
     def on_sync(self):
         if self.running_mode != 'backtest':
             self.pubacc.pub(json.dumps(self.acc.message),
@@ -546,6 +546,7 @@ class QAStrategyCTABase():
     def get_current_marketdata(self):
         return self.market_data.loc[(self.running_time, slice(None)), :]
 
+    # 分钟回调...
     def callback(self, a, b, c, body):
         """在strategy的callback中,我们需要的是
 
@@ -711,6 +712,9 @@ class QAStrategyCTABase():
         self.send_order(direction=direction, offset=offset,
                         volume=trade_amount, price=trade_price, order_id=QA.QA_util_random_with_topic(self.strategy_id))
 
+    # 发送完后，等待异步通知？
+    # 1. 启动时查询？
+    # 2. 运行时监听？
     def send_order(self,  direction='BUY', offset='OPEN', price=3925, volume=10, order_id='', code=None):
         if code == None:
             code = self.get_code()
@@ -723,7 +727,7 @@ class QAStrategyCTABase():
         elif isinstance(price, pd.Series):
             price = price.values[0]
 
-        if self.running_mode == 'sim':
+        if self.running_mode == 'sim' or self.running_mode == 'real' :
             # 在此处拦截无法下单的订单
             if (direction == 'BUY' and self.latest_price[code] <= price) or (direction == 'SELL' and self.latest_price[code] >= price):
                 QA.QA_util_log_info(
@@ -743,19 +747,8 @@ class QAStrategyCTABase():
                     self.pub.pub(
                         json.dumps(order), routing_key=self.strategy_id)
 
-                    self.acc.make_deal(order)
-                    self.on_deal(order)
-                    self.bar_order['{}_{}'.format(
-                        direction, offset)] = self.bar_id
-                    if self.send_wx:
-                        for user in self.subscriber_list:
-                            QA.QA_util_log_info(self.subscriber_list)
-                            try:
-                                requests.post('http://www.yutiansut.com/signal?user_id={}&template={}&strategy_id={}&realaccount={}&code={}&order_direction={}&order_offset={}&price={}&volume={}&order_time={}'.format(
-                                    user, "xiadan_report", self.strategy_id, self.acc.user_id, code.lower(), direction, offset, price, volume, now))
-                            except Exception as e:
-                                QA.QA_util_log_info(e)
-
+                    if(self.running_mode == 'sim'):
+                        self._deal_order(order,direction, offset,price, volume, now, code)
                 else:
                     QA.QA_util_log_info('failed in ORDER_CHECK')
             else:
@@ -786,6 +779,24 @@ class QAStrategyCTABase():
                 })
             self.positions = self.acc.get_position(code)
 
+    # 处理
+    def _deal_order(self,order,direction, offset,price, volume, now, code):
+        self.acc.make_deal(order)
+        self.on_deal(order)
+        self.bar_order['{}_{}'.format(
+            direction, offset)] = self.bar_id
+        if self.send_wx:
+            for user in self.subscriber_list:
+                QA.QA_util_log_info(self.subscriber_list)
+                try:
+                    requests.post(
+                        'http://www.yutiansut.com/signal?user_id={}&template={}&strategy_id={}&realaccount={}&code={}&order_direction={}&order_offset={}&price={}&volume={}&order_time={}'.format(
+                            user, "xiadan_report", self.strategy_id, self.acc.user_id, code.lower(), direction, offset,
+                            price, volume, now))
+                except Exception as e:
+                    QA.QA_util_log_info(e)
+
+    # 从self.acc中获取..
     def update_account(self):
         if self.running_mode == 'sim':
             QA.QA_util_log_info('{} UPDATE ACCOUNT'.format(
