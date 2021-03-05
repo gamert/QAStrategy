@@ -99,6 +99,8 @@ class StockStat_RPS(Stock_Base):
             df_rps[date] = rps120[date].index[:50]
         print(df_rps)
 
+        
+
         # # 构建一个以前面收益率为基础的空表
         # df_new = pd.DataFrame(pd.np.NaN, columns=ret120.columns, index=ret120.index)
         #
