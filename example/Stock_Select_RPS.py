@@ -34,7 +34,6 @@ def func_get_k_line(name, code, self):
 #
 class StockStat_RPS(Stock_Base):
 
-
     # 寻找w形态: 初略的
     def Fit_W_Shape(self, days=120, limit=200, beforeDate="20200305"):
         # 通过定义的函数获取上述3024只股票自2018年1月5日以来的所有日交易数据，并计算每只股票120日滚动收益率。
@@ -44,13 +43,16 @@ class StockStat_RPS(Stock_Base):
         n=20
         stock_list = []
         for c in data.columns:
-            d0 = data[c][-n]
-            d1 = data[c][-(n - 2):-1].max()
-            d2 = data[c][-1]
-            # 考虑股价在3-20元个股情况
-            if d1 < d0 < d2 < d0 * 1.52:
-                stock_list.append(c)
-        print(stock_list)
+            closes = data[c]
+            rr, period_high, today_high = N_DayHigh(closes, 60)
+            if rr :
+                d0 = closes[-n]
+                d1 = closes[-(n - 2):-1].max()
+                d2 = closes[-1]
+                # 考虑股价在3-20元个股情况
+                if d1 < d0 < d2 < d0 * 1.52:
+                    stock_list.append(c)
+        print("Fit_W_Shape:", stock_list)
         return stock_list
 
 
@@ -97,4 +99,4 @@ if __name__ == '__main__':
     # 2000  并行花费时间 62.25
     # 3000  并行花费时间 91.52
     # rps.Fit_RPS(days=5, limit=1000)
-    rps.Fit_W_Shape(days=5, limit=20)
+    rps.Fit_W_Shape(days=5, limit=40000) # 00

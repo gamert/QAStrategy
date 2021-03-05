@@ -51,6 +51,21 @@ def Convert2Tushare(df):
 def QA_fetch_stock_info2(code):
     return QA.QA_fetch_stock_info(code).ipo_date
 
+# 接近60天新高..
+def N_DayHigh(closes, days ,scale = 0.95):
+
+    cc = closes[-days:]
+    period_high = cc.max()
+    # print period_high
+    today_high = cc.iloc[-1]
+    # 这里不能直接用 .values
+    # 如果用的df【：1】 就需要用.values
+    # print today_high
+    if today_high >= period_high * scale:
+        return True, period_high, today_high
+    else:
+        return False, period_high, today_high
+
 # 基类:
 # 初始化股票列表（指定日期前，排除新股）
 class Stock_Base():
@@ -77,6 +92,7 @@ class Stock_Base():
         df = self._stock_list
         if filterST :
             df.drop(index=(df.loc[(df['name'].str.startswith("*ST"))].index), inplace=True)
+            df.drop(index=(df.loc[(df['name'].str.startswith("ST"))].index), inplace=True)
 
         if beforeDate:
             pd_info= pd.DataFrame([item for item in QA.DATABASE.stock_info.find()]).drop('_id', axis=1, inplace=False).set_index(
