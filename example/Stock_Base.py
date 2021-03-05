@@ -1,6 +1,8 @@
 # coding=utf-8
 import datetime
+import multiprocessing
 import sys
+import time
 from importlib import reload
 
 import QUANTAXIS as QA
@@ -103,6 +105,63 @@ class Stock_Base():
             # .head(10)
 
         return df
+
+    # 获取K线数据
+    def get_k_line(self, code, start='2019-1-1'):
+        today = datetime.date.today()
+        end_day = datetime.date(today.year, today.month, today.day)
+        # 'code', 'open', 'high', 'low', 'close', 'volume', 'amount', 'date'
+        dd = QA.QA_fetch_stock_day_adv(code, start, end_day, if_drop_index=False)
+        df = dd.to_qfq().data
+        #print(df)
+        return df.set_index(['date'], drop=False)
+
+    # 对DF{[codes],[names])}进行并行计算...
+    # 返回{name, df}
+    def Fit_Func_async(self, df, func, limit=200):
+        codes = df.code.values
+        names = df.name.values
+        code_name = dict(zip(names, codes))
+
+        i = 0
+        # 构建一个空的dataframe用来装数据
+        res_df = pd.DataFrame()
+
+        cores = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(processes=cores)
+
+        start_time = time.time()
+
+        count = len(codes)
+        ##zz = zip(names, codes, [self]*count)
+        ##pool.starmap(f, zz)
+
+        pool_list = []
+        #result_list = []
+
+        for name, code in code_name.items():
+            i=i+1
+            if i > limit:
+                break
+            #
+            pool_list.append(pool.apply_async(func, (name, code, self )))
+            # try:
+            #     res_df[name] = self.get_data(code).close
+            # except Exception as e:
+            #     print(e)
+        # #在这里不免有人要疑问，为什么不直接在 for 循环中直接 result.get()呢？
+        # 这是因为pool.apply_async之后的语句都是阻塞执行的，调用 result.get() 会等待上一个任务执行完之后才会分配下一个任务。
+        # 事实上，获取返回值的过程最好放在进程池回收之后进行，避免阻塞后面的语句。
+        result_list = [xx.get() for xx in pool_list]
+        for (name, df) in result_list:
+            res_df[name] = df
+            ##dict1 = {k: v for k, v in dict0.items() if v >= 60}
+
+        pool.close()
+        pool.join()
+
+        print("%d/%d;" % (limit, count), ' 并行花费时间 %.2f秒' % (time.time() - start_time))
+        return res_df;
 
 
 

@@ -22,10 +22,10 @@ from example.Stock_Base import *
 from example.Model_RPS import *
 
 
-def f(name, code, self):
+def func_get_k_line(name, code, self):
     try:
 #        data[name] =
-        return (name, self.get_data(code).close)
+        return (name, self.get_k_line(code).close)
     except Exception as e:
         print(e)
 
@@ -33,62 +33,34 @@ def f(name, code, self):
 # 统一计算250 120 50 等指定个数bar的强度，放到一个表内
 #
 class StockStat_RPS(Stock_Base):
-    #
-    def get_data(self, code, start='2019-1-1'):
-        today = datetime.date.today()
-        end_day = datetime.date(today.year, today.month, today.day)
-        # 'code', 'open', 'high', 'low', 'close', 'volume', 'amount', 'date'
-        dd = QA.QA_fetch_stock_day_adv(code, start, end_day,if_drop_index=False)
-        df = dd.to_qfq().data
-        #print(df)
-        return df.set_index(['date'], drop=False)
 
-    def DO(self, days=120, limit=200, beforeDate="20200305"):
+
+    # 寻找w形态: 初略的
+    def Fit_W_Shape(self, days=120, limit=200, beforeDate="20200305"):
         # 通过定义的函数获取上述3024只股票自2018年1月5日以来的所有日交易数据，并计算每只股票120日滚动收益率。
         df = self.Get_Stock_List(beforeDate)
-        codes = df.code.values
-        names = df.name.values
-        code_name = dict(zip(names, codes))
+        data = self.Fit_Func_async(df, func_get_k_line, limit=limit)
 
-        i = 0
-        # 构建一个空的dataframe用来装数据
-        data = pd.DataFrame()
+        n=20
+        stock_list = []
+        for c in data.columns:
+            d0 = data[c][-n]
+            d1 = data[c][-(n - 2):-1].max()
+            d2 = data[c][-1]
+            # 考虑股价在3-20元个股情况
+            if d1 < d0 < d2 < d0 * 1.52:
+                stock_list.append(c)
+        print(stock_list)
+        return stock_list
 
-        cores = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(processes=cores)
 
-        start_time = time.time()
+    
+    def Fit_RPS(self, days=120, limit=200, beforeDate="20200305"):
+        # 通过定义的函数获取上述3024只股票自2018年1月5日以来的所有日交易数据，并计算每只股票120日滚动收益率。
+        df = self.Get_Stock_List(beforeDate)
+        data = self.Fit_Func_async(df, func_get_k_line, limit=limit)
 
-        count = len(codes)
-        ##zz = zip(names, codes, [self]*count)
-        ##pool.starmap(f, zz)
-
-        pool_list = []
-        #result_list = []
-        start_time = time.time()
-
-        for name, code in code_name.items():
-            pool_list.append(pool.apply_async(f, (name, code, self )))
-            # try:
-            #     data[name] = self.get_data(code).close
-            # except Exception as e:
-            #     print(e)
-            i=i+1
-            if i > limit:
-                break
-        # #在这里不免有人要疑问，为什么不直接在 for 循环中直接 result.get()呢？
-        # 这是因为pool.apply_async之后的语句都是阻塞执行的，调用 result.get() 会等待上一个任务执行完之后才会分配下一个任务。
-        # 事实上，获取返回值的过程最好放在进程池回收之后进行，避免阻塞后面的语句。
-        result_list = [xx.get() for xx in pool_list]
-        for (name, df) in result_list:
-            data[name] = df
-            ##dict1 = {k: v for k, v in dict0.items() if v >= 60}
-
-        pool.close()
-        pool.join()
-
-        print('%d天RPS;' % (days), "%d/%d;" % (limit, count), ' 并行花费时间 %.2f秒' % (time.time() - start_time))
-
+        print('%d天RPS;' % (days))
         # 倒推120天的收益:
         ret120 = cal_ret(data, w=days)
         # 计算RPS
@@ -124,4 +96,5 @@ if __name__ == '__main__':
     # 普通循环：
     # 2000  并行花费时间 62.25
     # 3000  并行花费时间 91.52
-    rps.DO(days=5, limit=1000)
+    # rps.Fit_RPS(days=5, limit=1000)
+    rps.Fit_W_Shape(days=5, limit=20)
