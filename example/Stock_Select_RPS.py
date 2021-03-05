@@ -40,11 +40,12 @@ class StockStat_RPS(Stock_Base):
         # 'code', 'open', 'high', 'low', 'close', 'volume', 'amount', 'date'
         dd = QA.QA_fetch_stock_day_adv(code, start, end_day,if_drop_index=False)
         df = dd.to_qfq().data
-        return df.set_index(['date'],drop = False)
+        #print(df)
+        return df.set_index(['date'], drop=False)
 
-    def DO(self, limit=200):
+    def DO(self, days=120, limit=200, beforeDate="20200305"):
         # 通过定义的函数获取上述3024只股票自2018年1月5日以来的所有日交易数据，并计算每只股票120日滚动收益率。
-        df = self.Get_Stock_List("20200305")
+        df = self.Get_Stock_List(beforeDate)
         codes = df.code.values
         names = df.name.values
         code_name = dict(zip(names, codes))
@@ -86,10 +87,10 @@ class StockStat_RPS(Stock_Base):
         pool.close()
         pool.join()
 
-        print(limit,"/",count, ' 并行花费时间 %.2f' % (time.time() - start_time))
+        print('%d天RPS;' % (days), "%d/%d;" % (limit, count), ' 并行花费时间 %.2f秒' % (time.time() - start_time))
 
         # 倒推120天的收益:
-        ret120 = cal_ret(data, w=120)
+        ret120 = cal_ret(data, w=days)
         # 计算RPS
         rps120 = all_RPS(ret120)
         # 查看2018年7月31日-2019年3月19日每月RPS情况。下面仅列出每个月RPS排名前十的股票，里面出现不少熟悉的“妖股”身影。
@@ -123,4 +124,4 @@ if __name__ == '__main__':
     # 普通循环：
     # 2000  并行花费时间 62.25
     # 3000  并行花费时间 91.52
-    rps.DO(limit=100)
+    rps.DO(days=5, limit=1000)

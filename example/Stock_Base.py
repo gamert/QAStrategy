@@ -64,7 +64,7 @@ class Stock_Base():
     # code                                   ...
     # 000001  000001              2   平安银行   ...    stock_cn  sz     100
     # # 这里得到是对应的dataframe数据结构，它是类似于excel中一片数据的数据结构，有这些列：code,代码 name,名称 industry,所属行业 area,地区 pe,市盈率 outstanding,流通股本 totals,总股本(万) totalAssets,总资产(万)liquidAssets,流动资产 fixedAssets,固定资产 reserved,公积金 reservedPerShare,每股公积金 eps,每股收益 bvps,每股净资 pb,市净率 timeToMarket,上市日期
-    def Get_Stock_List(self, beforeDate = None):
+    def Get_Stock_List(self, beforeDate = None, filterST = True):
         #df = pd.DataFrame([['000001', "平安银行"]], columns=['code', 'name'])
         # df.set_index(["code"], inplace=True)
 
@@ -73,6 +73,8 @@ class Stock_Base():
         # df = df.drop([3, len(df)],axis=0)
         # print(df)
         df = self._stock_list
+        if filterST :
+            df.drop(index=(df.loc[(df['name'].str.startswith("*ST"))].index), inplace=True)
 
         if beforeDate:
             pd_info= pd.DataFrame([item for item in QA.DATABASE.stock_info.find()]).drop('_id', axis=1, inplace=False).set_index(
