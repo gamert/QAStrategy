@@ -10,7 +10,10 @@
 # %matplotlib inline
 
 # 正常显示画图时出现的中文和负号
+import multiprocessing
+
 from pylab import mpl
+import QUANTAXIS as QA
 
 mpl.rcParams['font.sans-serif'] = ['SimHei']
 mpl.rcParams['axes.unicode_minus'] = False
@@ -18,92 +21,104 @@ mpl.rcParams['axes.unicode_minus'] = False
 from example.Stock_Base import *
 from example.Model_RPS import *
 
-class StockStat_RPS(Stock_Base):
 
-    # 'ts_code,symbol,name,area,industry,list_date'
-    def DO_Stock_RPS(self, code, start='2019-1-1'):
-        # df = ts.get_hist_data(code, start='2019-1-1')
-        # 0-12 volume：成交量 price_change：价格变动 p_change：涨跌幅
-        # ['open', 'high', 'close', 'low', 'volume', 'price_change', 'p_change', 'ma5', 'ma10', 'ma20', 'v_ma5', 'v_ma10', 'v_ma20']
-        # print(df)
+def f(name, code, self):
+    try:
+#        data[name] =
+        return (name, self.get_data(code).close)
+    except Exception as e:
+        print(e)
+
+
+# 统一计算250 120 50 等指定个数bar的强度，放到一个表内
+#
+class StockStat_RPS(Stock_Base):
+    #
+    def get_data(self, code, start='2019-1-1'):
         today = datetime.date.today()
         end_day = datetime.date(today.year, today.month, today.day)
         # 'code', 'open', 'high', 'low', 'close', 'volume', 'amount', 'date'
-        df = QA.QA_fetch_stock_day(code, start, end_day, "pd")
+        dd = QA.QA_fetch_stock_day_adv(code, start, end_day,if_drop_index=False)
+        df = dd.to_qfq().data
+        return df.set_index(['date'],drop = False)
 
-        df1 = Convert2Tushare(df)
-        # print("df1",df1.shape[1]) #df 8
-        return StockDDBL_MACD(df1)
-
-    # 然后定义通过MACD判断买入卖出
-    def DO_MACD(self, df_Codes):
-        operate_array = []
-        count = len(df_Codes)
-        index = 1
-        for code in df_Codes.index:
-            (df, operate) = self.Get_Stock_DDBL(code)
-            operate_array.append(operate)
-            print("Get_Stock_DDBL[{}/{}] {} = {}".format(index,count, code,operate))
-            index += 1
-        df_Codes['MACD'] = pd.Series(operate_array, index=df_Codes.index)
-        return df_Codes
-
-    def DO(self):
+    def DO(self, limit=200):
         # 通过定义的函数获取上述3024只股票自2018年1月5日以来的所有日交易数据，并计算每只股票120日滚动收益率。
+        df = self.Get_Stock_List("20200305")
+        codes = df.code.values
+        names = df.name.values
+        code_name = dict(zip(names, codes))
 
+        i = 0
         # 构建一个空的dataframe用来装数据
         data = pd.DataFrame()
+
+        cores = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(processes=cores)
+
+        start_time = time.time()
+
+        count = len(codes)
+        ##zz = zip(names, codes, [self]*count)
+        ##pool.starmap(f, zz)
+
+        pool_list = []
+        #result_list = []
+        start_time = time.time()
+
         for name, code in code_name.items():
-            try:
-                data[name] = get_data(code)
-            except Exception as e:
-                print(e)
-            time.sleep(0.5)
+            pool_list.append(pool.apply_async(f, (name, code, self )))
+            # try:
+            #     data[name] = self.get_data(code).close
+            # except Exception as e:
+            #     print(e)
+            i=i+1
+            if i > limit:
+                break
+        # #在这里不免有人要疑问，为什么不直接在 for 循环中直接 result.get()呢？
+        # 这是因为pool.apply_async之后的语句都是阻塞执行的，调用 result.get() 会等待上一个任务执行完之后才会分配下一个任务。
+        # 事实上，获取返回值的过程最好放在进程池回收之后进行，避免阻塞后面的语句。
+        result_list = [xx.get() for xx in pool_list]
+        for (name, df) in result_list:
+            data[name] = df
+            ##dict1 = {k: v for k, v in dict0.items() if v >= 60}
 
+        pool.close()
+        pool.join()
 
-# 使用tushare获取上述股票周价格数据并转换为周收益率
-# 设定默认起始日期为2018年1月5日，结束日期为2019年3月19日
-# 日期可以根据需要自己改动
-def get_data(code, start='20150101', end='20190319'):
-    df = pro.daily(ts_code=code, start_date=start, end_date=end, fields='trade_date,close')
-    # 将交易日期设置为索引值
-    df.index = pd.to_datetime(df.trade_date)
-    df = df.sort_index()
-    # 计算收益率
-    return df.close
+        print(limit, ' 并行花费时间 %.2f' % (time.time() - start_time))
 
+        # 倒推120天的收益:
+        ret120 = cal_ret(data, w=120)
+        # 计算RPS
+        rps120 = all_RPS(ret120)
+        # 查看2018年7月31日-2019年3月19日每月RPS情况。下面仅列出每个月RPS排名前十的股票，里面出现不少熟悉的“妖股”身影。
+        dates = ['20210304']
+        df_rps = pd.DataFrame()
+        for date in dates:
+            df_rps[date] = rps120[date].index[:50]
+        print(df_rps)
 
+        # # 构建一个以前面收益率为基础的空表
+        # df_new = pd.DataFrame(pd.np.NaN, columns=ret120.columns, index=ret120.index)
+        #
+        # # 计算所有股票在每一个交易日的向前120日滚动RPS值。对股票价格走势和RPS进行可视化。
+        # for date in df_new.index:
+        #     date = date.strftime('%Y%m%d')
+        #     d = rps120[date]
+        #     for c in d.index:
+        #         df_new.loc[date, c] = d.loc[c, 'RPS']
 
+if __name__ == '__main__':
+    rps = StockStat_RPS()
+    ## apply_async 1000
+    # 100  并行花费时间 11
+    # 1000  并行花费时间 21.89
+    # 2000  并行花费时间 37.76 debug
+    # 2000  并行花费时间 30.10 run
+    # 3000  并行花费时间 39.56 run
 
-# data.to_csv('daily_data.csv',encoding='gbk')
-# data=pd.read_csv('stock_data.csv',encoding='gbk',index_col='trade_date')
-# data.index=(pd.to_datetime(data.index)).strftime('%Y%m%d')
-
-
-
-# 查看2018年7月31日-2019年3月19日每月RPS情况。下面仅列出每个月RPS排名前十的股票，里面出现不少熟悉的“妖股”身影。
-dates = ['20180731', '20180831', '20180928', '20181031', '20181130', '20181228', '20190131', '20190228', '20190319']
-df_rps = pd.DataFrame()
-for date in dates:
-    df_rps[date] = rps120[date].index[:50]
-
-print(df_rps)
-
-plot_rps('万科A')
-# plot_rps('华业资本')
-# plot_rps('顺鑫农业')
-
-# 欧奈尔研究了1953年至1993年，500只年度涨幅最大的股票，发现每年涨幅居前的，在他们股价真正大幅度攀升之前，其平均的相对强弱指标RPS为87％。
-# 这并不意味着，只要RPS>87%就可以买入该股票呢？其实RPS指标只是对强势股的个一个初步筛选，对于A股而言，RPS大于87%的股票就有400多只，
-# 都买进也不太现实，具体运用还需结合个股基本面、题材和整体市场情况分析。RPS实际上是欧奈尔在《笑傲股市》中提出的CANSLIM七步选股法的一个技术分析。
-# 各字母含义如下所示：
-# C：最近一季度报表显示的盈利（每股收益）
-# A：每年度每股盈利的增长幅度
-# N：新产品，新服务，股价创新高
-# S：该股流通盘大小，市值以及交易量的情况
-# L：该股票在行业中的低位，是否为龙头
-# I：该股票有无有实力的庄家，机构大流通股东
-# M：大盘走势如何，如何判断大盘走向
-# RPS可以帮助选出创出新高的股票。牛股一定创新高，但是新高不一定是牛股。所以关键是将RPS结合基本面进一步选择，基本面情况好，
-# 销售额和盈利增长很快，且这种增长是由公司推出的新产品或新服务带来的。本文主要分享了欧奈尔RPS指标的原理和Python计算方法，受篇幅所限，
-# 文中只给出了核心代码，如需完整代码可通过加入知识星球，向博主索要。文中提及股票不构成任何投资建议，投资有风险，入市需谨慎！
+    # 普通循环：
+    # 2000  并行花费时间 62.25
+    # 3000  并行花费时间 91.52
+    rps.DO(limit=3000)
