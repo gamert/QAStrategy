@@ -86,7 +86,7 @@ class StockStat_RPS(Stock_Base):
         pool.close()
         pool.join()
 
-        print(limit, ' 并行花费时间 %.2f' % (time.time() - start_time))
+        print(limit,"/",count, ' 并行花费时间 %.2f' % (time.time() - start_time))
 
         # 倒推120天的收益:
         ret120 = cal_ret(data, w=120)
@@ -121,4 +121,4 @@ if __name__ == '__main__':
     # 普通循环：
     # 2000  并行花费时间 62.25
     # 3000  并行花费时间 91.52
-    rps.DO(limit=3000)
+    rps.DO(limit=100)
